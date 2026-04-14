@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "wsl bash ./scripts/gate-review.sh"
+      }
+    ],
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "wsl bash ./scripts/hooks/session-start.sh"
+      }
+    ],
+    "AgentStart": [
+      {
+        "type": "command",
+        "command": "wsl bash ./scripts/hooks/subagent-start.sh"
+      }
+    ]
+  }
+}
