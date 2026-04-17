@@ -39,23 +39,27 @@ script must copy the skills and apply a cross-platform in-place translation
 - `scripts/install_crush.sh`:
   - **Script header** (first two lines after source guard): `#!/usr/bin/env bash` shebang, then `set -euo pipefail`. Script file must be executable (`chmod +x`).
   - **Source guard** (must appear before `set -euo pipefail` to prevent leaking set options into the parent shell when sourced): `[[ "${BASH_SOURCE[0]}" == "$0" ]] || { echo "ERROR: do not source this script — run it directly"; return 1; }`
-  - **Argument parsing:** `--dry-run` is the only supported flag. Any unknown argument must print `USAGE: install_crush.sh [--dry-run]` and exit 1. **The dry-run flag MUST be stored in a named variable (e.g. `DRY_RUN=false`/`true`) immediately after parsing, before the skill loop. All dry-run checks inside the loop MUST reference this variable, never `$1` or `$@` — the loop uses `set --` internally which clobbers positional parameters.**
-  - `--dry-run` flag: skip all actions (directory creation, copying, translation, and post-install validation). In dry-run mode: print `DRY-RUN: would copy and translate $src → $dst` for COPY cases; print `DRY-RUN: would update $dst` for UPDATE cases; print `DRY-RUN: would skip real file at $dst` for conflicts.
+  - **Argument parsing:** `--dry-run` is the only supported flag. Any unknown argument must print `USAGE: install_crush.sh [--dry-run]` and exit 1. **The dry-run flag MUST be stored in a named variable (e.g. `DRY_RUN=false`/`true`) immediately after parsing, before the skill loop. All dry-run checks inside the loop MUST reference this variable, never `$1` or `$@`.**
+  - `--dry-run` flag: **in dry-run, existence checks (`[ -L ]`, `[ -d ]`, `[ -e ]`) ARE performed** to select the correct message; only mutations are skipped (`rm`, `mkdir -p`, `cp`, `sed`, `rm -f .bak`, post-install validation). Print:
+    - `DRY-RUN: would remove legacy symlink at $dst and copy $src → $dst` — symlink case
+    - `DRY-RUN: would copy and translate $src → $dst` — new dir case (no prior entry)
+    - `DRY-RUN: would update $dst` — existing dir case
+    - `DRY-RUN: would skip real file at $dst` — conflict case (regular file, not dir)
   - Resolve target dir using null-safe test `[ -n "${CRUSH_SKILLS_DIR:-}" ]` (required by `set -u` to avoid abort when `$CRUSH_SKILLS_DIR` is unset): if set and non-empty, strip trailing slashes; if result is empty after stripping (e.g. value was `/` or `///`), fall back to `/` if original value was root, otherwise XDG default with informational message; else use stripped value. If unset or empty, use `${XDG_CONFIG_HOME:-$HOME/.config}/crush/skills`.
-  - Create target dir if absent (`mkdir -p`); **skipped if `DRY_RUN=true`** (dry-run must not create directories); on failure print `ERROR: could not create target directory $target — check permissions` and exit 1
-  - **Environment guard:** `UNAME_O=$(uname -o 2>/dev/null || true)` (`|| true` makes the assignment always succeed so `set -e` does not abort on macOS where `uname -o` exits non-zero); use a `case` statement for portability across all bash versions:
+  - **Environment guard** (must run **before** `mkdir -p` to prevent creating the target dir on unsupported platforms): `UNAME_O=$(uname -o 2>/dev/null || true)` (`|| true` makes the assignment always succeed so `set -e` does not abort on macOS where `uname -o` exits non-zero); use a `case` statement for portability across all bash versions:
     ```
     case "$UNAME_O" in
       [Mm][Ss][Yy][Ss]*|[Cc][Yy][Gg][Ww][Ii][Nn]*) echo "ERROR: install_crush.sh does not support Git Bash or Cygwin — run from Linux, macOS, or WSL instead"; exit 1 ;;
     esac
     ```
-  - `shopt -s nullglob` before iterating skill dirs; print informational message if zero skills found. `shopt -u nullglob` is called exactly once, after the skill loop ends (or on any explicit early return before the loop) — it is **not** called inside the loop body, so nullglob remains active throughout the entire loop including the `set -- "$src/"*` empty-dir guard.
+  - Create target dir if absent (`mkdir -p`); **skipped if `DRY_RUN=true`** (dry-run must not create directories); on failure print `ERROR: could not create target directory $target — check permissions` and exit 1
+  - `shopt -s nullglob` before iterating skill dirs. **Verify `$REPO_ROOT/skills/` exists and is a directory before the loop; if absent, print `ERROR: skills directory not found: $REPO_ROOT/skills/` and exit 1.** Print informational message if zero skills found (nullglob expansion is empty). `shopt -u nullglob` is called exactly once, after the skill loop ends (or on any explicit early return before the loop) — it is **not** called inside the loop body, so nullglob remains active throughout the entire loop. Declare `installed_skills=()` (empty array) **immediately before** `shopt -s nullglob` so that `installed_skills+=(...)` inside the loop never references an unbound variable under `set -u`.
   - Compute `REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)` once at startup. Extract skill name via `skillname=$(basename "$skilldir")` for each entry in the glob. `src="$REPO_ROOT/skills/$skillname"` — always an absolute path.
   - Iterate skill dirs with idempotency checks:
-    - If `$dst` is a symlink (`[ -L "$dst" ]`), remove it (`rm -f "$dst"`). This cleans up legacy installations that symlinked to the git repository, preventing `sed` from mutating the source of truth.
-    - If `$dst` exists but is not a directory (and not a symlink), print `WARN: real file at $dst — skipping`.
-    - If `$dst` does not exist, copy directory `cp -R "$src" "$dst"`, print `COPIED:`, and apply translation.
-    - If `$dst` exists as a directory, update the files: use `set -- "$src/"*` to collect files under nullglob; only run `cp -R "$@" "$dst/"` if `$# -gt 0`; print `UPDATED:`, and apply translation. (`basename "$skilldir"` handles trailing-slash paths correctly on both GNU and macOS; `basename "/path/brainstorming/"` returns `brainstorming`.)
+    - If `$dst` is a symlink (`[ -L "$dst" ]`): if `DRY_RUN=true`, print `DRY-RUN: would remove legacy symlink at $dst and copy $src → $dst` and `continue`. Otherwise: `rm -f "$dst"`, then immediately run the same logic as the does-not-exist branch (`cp -R "$src" "$dst"`, print `COPIED:`, apply translation, accumulate `installed_skills+=( "$skillname" )`) **and `continue`** — **do not use C-style fall-through; duplicate the copy+translate block or extract a helper function.** This cleans up legacy installations that symlinked to the git repository, preventing `sed` from mutating the source of truth.
+    - If `$dst` exists but is not a directory (and not a symlink): if `DRY_RUN=true`, print `DRY-RUN: would skip real file at $dst` and `continue`; otherwise print `WARN: real file at $dst — skipping` and `continue`. **Do not accumulate `$skillname` into `installed_skills` in either case** — skipped entries are not installed and must not be validated.
+    - If `$dst` does not exist: if `DRY_RUN=true`, print `DRY-RUN: would copy and translate $src → $dst` and `continue`. Otherwise, copy directory `cp -R "$src" "$dst"`, print `COPIED:`, apply translation, and accumulate `installed_skills+=( "$skillname" )`.
+    - If `$dst` exists as a directory: if `DRY_RUN=true`, print `DRY-RUN: would update $dst` and `continue` (**the `DRY_RUN` check must come first — before any `rm -rf`**). Otherwise: `rm -rf "$dst"` then `cp -R "$src" "$dst"` — if `cp` fails after `rm -rf`, the target is in a broken state; print `ERROR: failed to copy $src to $dst after removing existing directory — aborting` and exit 1 immediately. On success: print `UPDATED:`, apply translation, accumulate `installed_skills+=( "$skillname" )`. This guarantees the installed directory is an exact mirror of the source. (`basename "$skilldir"` handles trailing-slash paths correctly on both GNU and macOS; `basename "/path/brainstorming/"` returns `brainstorming`.)
   - **Translation Step:** After copying or updating, apply translation only if `[ -f "$dst/SKILL.md" ]`. Run `sed -i.bak` for cross-platform in-place editing on `$dst/SKILL.md`; remove the backup with `rm -f "$dst/SKILL.md.bak"` (explicit filename, not glob) after successful sed. **Substitutions must be applied longest-pattern-first to prevent partial matches** (e.g. `multi_replace_string_in_file` must be substituted before `replace_string_in_file`, otherwise the latter matches inside the former and produces `multi_edit` instead of `edit`). Translation table in required application order (VS Code → Crush native):
     1. `multi_replace_string_in_file` → `multiedit`
     2. `replace_string_in_file` → `edit`
@@ -65,10 +69,10 @@ script must copy the skills and apply a cross-platform in-place translation
     6. `read_file` → `view`
     7. `grep_search` → `grep`
     8. `list_dir` → `ls`
-    9. `file_search` → `grep` (best available Crush equivalent)
+    9. `file_search` → `glob` (Crush native tool for finding files by name/pattern)
     10. `vscode_askQuestions` → *(no equivalent — leave as-is; no sed expression)*
     - Untranslated (leave as-is; no sed expression): `semantic_search`, `get_errors`, `create_file`, `view_image`, `vscode_listCodeUsages`
-  - **Post-install validation** (skipped entirely in `--dry-run`; also skipped if zero skills were found via nullglob): for each skill name from the install loop, if `[ -f "$src/SKILL.md" ]` (source had a SKILL.md), then check `[ -f "$target/$skillname/SKILL.md" ]`; print `WARN: $target/$skillname does not contain SKILL.md` on failure. Does not iterate pre-existing non-bof entries in the target dir.
+  - **Post-install validation** (skipped entirely in `--dry-run`; also skipped if zero skills were found via nullglob): iterate `installed_skills` (accumulated during the install loop — WARN-skipped entries are not in this array). For each accumulated skill name: if `[ -f "$src/SKILL.md" ]` (source had a SKILL.md), then check `[ -f "$target/$skillname/SKILL.md" ]`; print `WARN: $target/$skillname does not contain SKILL.md` on failure. Does not iterate pre-existing non-bof entries in the target dir.
   - Print `COPIED:`, `UPDATED:`, `DRY-RUN:`, `WARN:` prefix per action; all path variables quoted in every command.
   - Exit 0 on success; exit 1 on unrecoverable error.
   - Final summary: print target dir; suggest `ls -la <target>` to verify.
@@ -100,7 +104,7 @@ script must copy the skills and apply a cross-platform in-place translation
 
 ## Acceptance Criteria
 
-1. `--dry-run` prints one `DRY-RUN:` line per skill dir; exits 0; no files/dirs created.
+1. `--dry-run` prints one `DRY-RUN:` line per skill dir; exits 0; no files/dirs created or deleted.
 2. `bash scripts/install_crush.sh` creates the resolved target dir if absent, copies `skills/*/` into it, and executes the translation step on the copied `SKILL.md` files.
 3. Running the script a second time always prints `UPDATED:` for every entry that was previously installed as a directory, and exits 0 — no content diff is performed; files are always overwritten and re-translated on subsequent runs.
 4. Validation failures → `WARN:` line; exit code unchanged (always 0 on success path).
@@ -122,12 +126,54 @@ script must copy the skills and apply a cross-platform in-place translation
 
 ---
 
+### Round 27 Adversarial Review (r0 / GPT-4.1 / iteration 27)
+
+**Verdict:** CONDITIONAL — one critical and one major resolved post-review
+1. **C1 (`rm -rf` runs before DRY_RUN check in UPDATED: branch):** UPDATED: branch now explicitly checks `DRY_RUN=true` first; `continue` precedes any `rm -rf`
+2. **M1 (`cp` failure after `rm -rf` leaves broken state):** `cp -R` failure after `rm -rf` is now a fatal error: print error message + exit 1 immediately
+
+### Round 26 Adversarial Review (r0 / GPT-4.1 / iteration 26)
+
+**Verdict:** FAILED — one critical and one major resolved post-review
+1. **C1 (`file_search` → `grep` wrong):** Crush has a native `glob` tool for finding files by name/pattern; translation corrected to `file_search` → `glob`
+2. **M1 (overlay copy leaves orphaned files):** UPDATED: branch now performs `rm -rf "$dst"` then `cp -R "$src" "$dst"` — exact mirror; eliminates orphaned files and also removes the `set -- "$@"` contamination concern from round 24
+
+### Round 25 Adversarial Review (r1 / Auto / iteration 25)
+
+**Verdict:** CONDITIONAL — two majors and one minor resolved post-review
+1. **M1 (environment guard after `mkdir -p` creates dir on unsupported platform):** Environment guard now runs **before** `mkdir -p`; order is: resolve target → environment guard → mkdir -p → skills-dir check → loop
+2. **M2 (conflict branch ambiguous in dry-run):** Conflict branch is now explicitly dual-path: `DRY_RUN=true` → `DRY-RUN: would skip real file at $dst`; else → `WARN: real file at $dst — skipping`; neither case accumulates into `installed_skills`
+3. **L1 (symlink branch accumulation not explicit):** Symlink removal (non-dry-run) path now explicitly includes `installed_skills+=( "$skillname" )` in the copy+translate block
+
+### Round 24 Adversarial Review (r0 / GPT-4.1 / iteration 24)
+
+**Verdict:** CONDITIONAL — three majors and one minor resolved post-review
+1. **M1 (`installed_skills` unbound under `set -u`):** `installed_skills=()` now declared immediately before `shopt -s nullglob`; first `+=(...)` never references an unbound variable
+2. **M2 (WARN branch accumulates into `installed_skills`):** WARN branch now explicitly says `continue`; `$skillname` is NOT accumulated for skipped entries; post-install will not validate them
+3. **M3 (`$@` referenced by translate step):** UPDATED: branch now explicitly states translate step and any helper function must use named variables only, never `$@`
+4. **L1 (`skills/` directory missing is silent success):** Added guard: if `$REPO_ROOT/skills/` does not exist or is not a directory, print error and exit 1
+
+### Round 23 Adversarial Review (r2 / GPT-4o / iteration 23)
+
+**Verdict:** CONDITIONAL — four issues resolved post-review
+1. **M1 (undefined bash "fall-through"):** Symlink branch now explicitly states: duplicate the copy+translate block (or extract a helper function) — no C-style fall-through; copy+translate logic runs inline after `rm -f "$dst"`
+2. **M2 (post-install loop scope):** Post-install validation now specifies using a bash array (`installed_skills+=( "$skillname" )`) accumulated during the install loop; second pass iterates the array, not a re-run of the glob
+3. **M3 (DRY-RUN symlink consistency with AC1):** Clarified that the symlink case prints exactly one DRY-RUN: message (the "would remove" message) and `continue`; AC1 "one DRY-RUN: per skill dir" is satisfied
+4. **M4 (AC1 missing "no deletions"):** AC1 updated to "no files/dirs created or deleted"
+
 ### Round 19 Adversarial Review (r1 / Auto / iteration 19)
 
 **Verdict:** CONDITIONAL — one major and two minors resolved post-review
 1. **M1 (`mkdir -p` in dry-run violates AC1):** `mkdir -p` now explicitly skipped when `DRY_RUN=true`
 2. **L1 (AC3 wording):** AC3 now says "every entry that was previously installed as a directory" (conflict case prints WARN:, not UPDATED:)
 3. **L2 (`shopt -u nullglob` timing):** Clarified as called exactly once after the loop ends; NOT inside the loop body (nullglob must stay active for the `set -- "$src/"*` guard)
+
+### Round 22 Adversarial Review (r1 / Auto / iteration 22)
+
+**Verdict:** CONDITIONAL — one cluster of three related issues resolved post-review
+1. **M1 (symlink removal not guarded by DRY_RUN):** Symlink case now checks `DRY_RUN=true` first; if dry-run, prints message and `continue`; otherwise removes symlink and falls through to copy path
+2. **M2 (missing DRY-RUN message for symlink case):** Fourth DRY-RUN message added: `DRY-RUN: would remove legacy symlink at $dst and copy $src → $dst`
+3. **M3 (dry-run control flow ambiguous):** Clarified that existence checks ([ -L ], [ -d ], [ -e ]) DO run in dry-run to select the correct message; only mutations are skipped
 
 ### Round 20 Adversarial Review (r2 / GPT-4o / iteration 20)
 
@@ -175,6 +221,15 @@ script must copy the skills and apply a cross-platform in-place translation
 3. **L2 (shopt -u nullglob contradiction):** Requirement softened to "execute before any explicit early return or normal exit" to account for implicit `set -e` exits.
 
 ## Session Notes
+
+### Round 30 Adversarial Review (r0 / GPT-4.1 / iteration 29)
+
+**Verdict:** PASSED — all critical and major issues resolved post-review
+1. **C1 (Missing DRY_RUN guard):** Added explicit `DRY_RUN` check to the "does not exist" branch to prevent silent mutation.
+2. **M1 (Missing continue in symlink path):** Appended `and continue` to the non-dry-run path of the symlink branch to prevent double-execution.
+3. **M2 (Stale set -- context):** Removed obsolete warnings about `set --` to prevent implementer confusion.
+
+
 
 ### Round 21 Adversarial Review (r0 / GPT-4.1 / iteration 21)
 
