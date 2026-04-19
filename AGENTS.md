@@ -10,7 +10,11 @@
 
 `bof` is a port of [`github.com/obra/superpowers`](https://github.com/obra/superpowers) for VS Code Copilot Chat. It ships as a repository of `SKILL.md` files and `.agent.md` files that install into `~/.copilot/skills/` and `~/.copilot/agents/` via a symlink-based `scripts/install.sh`. When used alongside the **Esquisse** project framework, bof provides a complete end-to-end developer workflow: constitution → brainstorm → spec → plan → subagent implementation → code review → merge.
 
-bof is **pure markdown** — no build system, no binary, no runtime dependencies. The "code" is the prompt content and frontmatter metadata in `.md` files.
+bof is **pure markdown** — no build system, no binary, no runtime dependencies —
+with one exception: `bof-mcp/` is a Go MCP server that provides Crush-compatible
+agent dispatch and model discovery. It has its own `go.mod` and must be built
+separately (`cd bof-mcp && go build -o bof-mcp .`). The "code" is otherwise the
+prompt content and frontmatter metadata in `.md` files.
 
 ---
 
@@ -101,6 +105,18 @@ bof/
 ├── tests/
 │   └── triggers/                          ← manual trigger test checklist per skill
 │
+├── bof-mcp/                               ← Go MCP server: Crush agent dispatch + model discovery
+│   ├── main.go
+│   ├── tools.go
+│   ├── runner.go
+│   ├── adversarial.go
+│   ├── dispatch.go
+│   ├── models.go
+│   ├── state.go
+│   ├── go.mod
+│   ├── embedded/                          ← copied .md files for //go:embed (no .. allowed)
+│   └── README.md
+│
 └── scripts/
     ├── install.sh                          ← symlinks skills/ and agents/ → ~/.copilot/
     ├── gate-review.sh                      ← adversarial review Stop hook (called by hooks.json)
@@ -115,7 +131,9 @@ bof/
 
 ## Build Commands
 
-bof is pure markdown — no compilation. The only "build" step is installation:
+bof skills and agents are pure markdown — no compilation needed. The only exception:
+
+### Install (skills + agents)
 
 ```sh
 # From WSL (recommended — bof repo lives on Windows filesystem)
@@ -124,6 +142,15 @@ bash scripts/install.sh
 # Verify installation
 ls ~/.copilot/skills/ | grep -E "brainstorming|writing-plans|bof"
 ```
+
+### bof-mcp (Go MCP server)
+
+```sh
+cd bof-mcp
+go build -o bof-mcp .
+```
+
+See `bof-mcp/README.md` for `crush.json` and `.vscode/mcp.json` configuration snippets.
 
 ---
 
@@ -268,6 +295,19 @@ If a project has `code_ast.duckdb` at its root:
 
 Prefer AST queries over file reads for: finding definitions, locating callers, mapping interface implementations. Rebuild with `bash scripts/rebuild-ast.sh` (Esquisse projects).
 
+### bof-mcp (optional, for Crush and VS Code model routing)
+
+| Tool | Purpose | Config |
+|---|---|---|
+| `adversarial_review` | Runs adversarial review via Crush; disabled with `--no-adversarial` | bof-mcp |
+| `gate_review` | Checks `.adversarial/` verdicts | bof-mcp |
+| `implementer_agent` | Dispatches ImplementerAgent role via Crush | bof-mcp |
+| `spec_review` | Dispatches SpecReviewerAgent role via Crush | bof-mcp |
+| `quality_review` | Dispatches CodeQualityReviewerAgent role via Crush | bof-mcp |
+| `discover_models` | Lists available Crush models with availability status | bof-mcp |
+
+See `bof-mcp/README.md` for `crush.json` and `.vscode/mcp.json` configuration snippets.
+
 ### Adversarial Review Infrastructure
 
 | Component | Location | Role |
@@ -357,7 +397,10 @@ bof does NOT include and must NOT add:
 
 ## Common Mistakes to Avoid
 
-TODO: Populate after first agent session.
+1. **[bof-mcp] Go `//go:embed` prohibits `..` in patterns.**
+   - Wrong: `//go:embed ../agents/ImplementerAgent.agent.md` (will fail at build time)
+   - Right: copy the files to `bof-mcp/embedded/agents/` and use `//go:embed embedded/agents/ImplementerAgent.agent.md`
+   - Why: Go's embed package spec: "Patterns may not contain '.' or '..' path elements". The embedded/ subdirectory approach makes binaries self-contained without runtime file-system dependencies.
 
 ## References
 

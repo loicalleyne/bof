@@ -29,7 +29,7 @@ Every project goes through this process. A todo list, a single-function utility,
 
 ## Checklist
 
-Use `manage_todo_list` to create a task for each item and complete them in order:
+Use `manage_todo_list` (VS Code) / `todos` (Crush) to create a task for each item and complete them in order:
 
 1. **Explore project context** — read `AGENTS.md` (if present), check files, docs, recent commits
 2. **Offer napkin visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question
@@ -72,10 +72,10 @@ User reviews spec? → Changes requested → revise → re-review
 
 **Understanding the idea:**
 
-- Check current project state first (read `AGENTS.md`, check `GLOSSARY.md`, look at `docs/`, recent commits via `run_in_terminal`)
+- Check current project state first (read `AGENTS.md`, check `GLOSSARY.md`, look at `docs/`, recent commits via `run_in_terminal` (VS Code) / `bash` (Crush))
 - Before asking detailed questions, assess scope: if the request describes multiple independent subsystems, flag this immediately and help decompose before proceeding
 - For appropriately-scoped projects, ask questions one at a time to refine the idea
-- Prefer multiple-choice questions when possible; use `vscode_askQuestions` with options for fixed choices
+- Prefer multiple-choice questions when possible; use `vscode_askQuestions` (VS Code) / ask inline (Crush) with options for fixed choices
 - Only one question per message
 
 **Exploring approaches:**
@@ -86,7 +86,7 @@ User reviews spec? → Changes requested → revise → re-review
 **Presenting the design:**
 
 - Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
-- Ask after each section whether it looks right (use `vscode_askQuestions` for binary approve/revise)
+- Ask after each section whether it looks right (use `vscode_askQuestions` (VS Code) / ask inline (Crush) for binary approve/revise)
 - Cover: architecture, components, data flow, error handling, testing
 
 ---
@@ -98,7 +98,7 @@ User reviews spec? → Changes requested → revise → re-review
 - Write the validated design (spec) to `docs/specs/YYYY-MM-DD-<topic>-design.md`
   - If `docs/specs/` does not exist, create it
   - For Esquisse projects this aligns with the Esquisse directory structure
-- Commit the design document via `run_in_terminal`
+- Commit the design document via `run_in_terminal` (VS Code) / `bash` (Crush)
 
 **Spec Self-Review:**
 After writing the spec, check with fresh eyes:
@@ -137,7 +137,7 @@ Per-question decision: even after the user accepts, decide FOR EACH QUESTION whe
 ## Key Principles
 
 - **One question at a time** — Don't overwhelm with multiple questions
-- **Multiple choice preferred** — Use `vscode_askQuestions` with options when choices are bounded
+- **Multiple choice preferred** — Use `vscode_askQuestions` (VS Code) / ask inline (Crush) with options when choices are bounded
 - **YAGNI ruthlessly** — Remove unnecessary features from all designs
 - **Explore alternatives** — Always propose 2-3 approaches before settling
 - **Incremental validation** — Present design, get approval before moving on

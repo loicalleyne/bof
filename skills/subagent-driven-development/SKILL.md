@@ -15,6 +15,8 @@ after each: spec compliance first, then code quality.
 
 **Announce at start:** "I'm using `bof:subagent-driven-development` to execute this plan."
 
+> **Crush compatibility:** `runSubagent` is not available in Crush. Use `bof:executing-plans` instead, which implements each task inline in the same session.
+
 ---
 
 ## When to Use vs. Alternatives
@@ -55,7 +57,7 @@ This check runs once — before the first task. Do not re-run between tasks.
 1. **Read all task documents** from `docs/tasks/` (or the plan file) upfront.
    Extract the full text of each task with its context.
 
-2. **Create todo list** with `manage_todo_list`. One item per task.
+2. **Create todo list** with `manage_todo_list` (VS Code) / `todos` (Crush). One item per task.
 
 3. **Verify worktree is active** (`git branch` should show feature branch, not main).
 
@@ -122,7 +124,7 @@ If CodeQualityReviewerAgent returns **Critical** or **Important** issues:
 ### Step 5: Mark Task Complete
 
 ```
-manage_todo_list({taskId: "task-slug", status: "completed"})
+   manage_todo_list / todos({taskId: "task-slug", status: "completed"})
 ```
 
 Proceed to next task.
@@ -181,3 +183,20 @@ See in this directory:
 - `implementer-prompt.md` — base context for ImplementerAgent dispatch
 - `spec-reviewer-prompt.md` — base context for SpecReviewerAgent dispatch
 - `code-quality-reviewer-prompt.md` — base context for CodeQualityReviewerAgent dispatch
+
+## Crush Mode (bof-mcp)
+
+> **VS Code users:** Use the native `runSubagent(...)` dispatch path above.
+> This section is for Crush callers, or VS Code callers delegating to Crush for model access.
+
+Replace each `runSubagent(...)` call with the corresponding bof-mcp tool:
+
+| VS Code | bof-mcp tool | Notes |
+|---|---|---|
+| `runSubagent("ImplementerAgent", prompt)` | `implementer_agent` | Pass `model` param to select Crush model |
+| `runSubagent("SpecReviewerAgent", prompt)` | `spec_review` | Same model or a smaller/faster one |
+| `runSubagent("CodeQualityReviewerAgent", prompt)` | `quality_review` | Same model or a smaller/faster one |
+
+**Before first task:** Call `discover_models` to confirm available models.
+Use `adversarial_review` for the adversarial guard (or `gate_review` if the review already ran).
+All other steps in this skill apply unchanged.

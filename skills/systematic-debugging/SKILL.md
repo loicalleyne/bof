@@ -95,7 +95,17 @@ You MUST complete each phase before proceeding to the next.
 
 5. **Trace Data Flow**
 
-   **WHEN error is deep in call stack:**
+   **If `code_ast.duckdb` exists (preferred):**
+
+   Use `duckdb-code` to trace the call graph without reading files:
+   - "What calls `{failing_function}`?" — find all callers
+   - "Where is `{bad_value}` produced?" — find the origin
+   - "What implements `{Interface}`?" — find concrete types passing through
+
+   This maps the full call chain in one query. Then read only the
+   specific file at the identified origin point.
+
+   **If no AST cache:**
 
    See `root-cause-tracing.md` in this directory for the complete backward
    tracing technique.
@@ -111,8 +121,11 @@ You MUST complete each phase before proceeding to the next.
 **Find the pattern before fixing:**
 
 1. **Find Working Examples**
-   - Locate similar working code in same codebase
-   - What works that's similar to what's broken?
+   - If `code_ast.duckdb` exists: use `duckdb-code` — "Find all usages of
+     `{pattern or function}` in the codebase" to locate similar working code
+     without full file reads.
+   - Otherwise: `grep_search` (VS Code) / `grep` (Crush) for the pattern.
+   - What works that’s similar to what’s broken?
 
 2. **Compare Against References**
    - If implementing pattern, read reference implementation COMPLETELY

@@ -1,0 +1,298 @@
+# bof — Full LLM Reference
+
+> bof is a skill library that gives VS Code Copilot Chat and Crush structured developer workflows.
+> It ships as `SKILL.md` files and `.agent.md` files that auto-install via `scripts/install.sh`.
+> The only non-markdown component is `bof-mcp/` — a Go MCP server for Crush compatibility.
+
+---
+
+## 1. Skills
+
+All skills live in `skills/{name}/SKILL.md` and install to `~/.copilot/skills/{name}/SKILL.md`.
+VS Code Copilot Chat auto-triggers a skill when the user message matches its `description:` frontmatter field.
+
+### `brainstorming`
+
+HARD GATE: must complete before any feature implementation begins.
+
+**Triggers:** "I want to add", "help me design", "plan a feature", "brainstorm", "let's build"
+
+**Outputs:** `docs/specs/YYYY-MM-DD-{topic}-design.md`
+
+**Process:** structured questions via `vscode_askQuestions` → design exploration → spec document. No code until design is approved by the user.
+
+---
+
+### `writing-plans`
+
+**Triggers:** "write an implementation plan", "plan this feature", "create tasks for", "break this down into steps"
+
+**Outputs:** `docs/tasks/P{n}-{nnn}-{slug}.md` (one per logical work unit)
+
+**Process:** reads spec → maps all files/types/interfaces → writes task docs → runs `bof:adversarial-review` → PASSED/CONDITIONAL before handoff.
+
+---
+
+### `executing-plans`
+
+**Triggers:** "execute the plan", "work through these tasks", "execute this plan yourself", "implement tasks one by one"
+
+**Process:** inline single-session task execution; no subagent dispatch. Use when tasks are tightly coupled.
+
+---
+
+### `subagent-driven-development`
+
+**Triggers:** "execute the plan", "start implementation with subagents", "implement these tasks", "run subagent-driven development"
+
+**Process per task:**
+1. `runSubagent("ImplementerAgent", taskPrompt)` — implements the task
+2. `runSubagent("SpecReviewerAgent", specPrompt)` — verifies spec compliance (must be ✅ before continuing)
+3. `runSubagent("CodeQualityReviewerAgent", qualityPrompt)` — verifies code quality (Critical/Important issues → re-implement)
+
+**Prerequisite:** adversarial review PASSED or CONDITIONAL before first task.
+
+**Crush Mode:** replace `runSubagent(...)` calls with `implementer_agent`, `spec_review`, `quality_review` bof-mcp tools. See `## Crush Mode (bof-mcp)` section in skill file.
+
+---
+
+### `adversarial-review`
+
+**Triggers:** "adversarial review", "review this plan adversarially", "run adversarial review"
+
+**Process:** reads rotation state from `.adversarial/state.json` → dispatches `@Adversarial-r{slot}` → writes `.adversarial/{plan-slug}.json` → PASSED/CONDITIONAL/FAILED verdict.
+
+**Slot rotation:** `slot = iteration % 3` → r0 (GPT-4.1) / r1 (Claude Opus 4) / r2 (GPT-4o)
+
+**Crush Mode:** use `adversarial_review` bof-mcp tool with `plan_slug`, `plan_content`, `exclude_model` params. `exclude_model` is exact case-insensitive match.
+
+---
+
+### `test-driven-development`
+
+**Triggers:** "implement this function", "write this feature", "fix this bug", any request for production code
+
+**IRON LAW:** write the failing test first. RED → GREEN → REFACTOR. Never write implementation before the test exists.
+
+---
+
+### `verification-before-completion`
+
+**Triggers:** "done", "complete", "fixed", "tests pass", "ready to commit", any completion claim
+
+**Process:** run tests, check for regressions, verify acceptance criteria before claiming completion.
+
+---
+
+### `systematic-debugging`
+
+**Triggers:** "test is failing", "this bug", "unexpected behavior", "why is this broken", "debug this"
+
+**Phase 1:** investigation (understand root cause) before any code change. Never attempt a fix before Phase 1 is complete.
+
+---
+
+### `requesting-code-review`
+
+**Triggers:** "request code review", "review my changes", "review this implementation", "code review before merge"
+
+**Process:** `runSubagent("CodeQualityReviewerAgent", fullImplementationReviewPrompt)`
+
+---
+
+### `receiving-code-review`
+
+**Triggers:** "I received code review feedback", "reviewer says I should", "how do I respond to this feedback"
+
+---
+
+### `using-git-worktrees`
+
+**Triggers:** "create a worktree", "set up isolated workspace", "start work on new feature branch"
+
+**Process:** `git worktree add .worktrees/{branch} -b {branch}` → install deps → copy `code_ast.duckdb` if present → run baseline tests.
+
+---
+
+### `finishing-a-development-branch`
+
+**Triggers:** "implementation is complete", "merge this branch", "create a PR", "done with this feature"
+
+**Options presented via `vscode_askQuestions`:** merge to main / create PR / keep branch / discard.
+
+---
+
+### `dispatching-parallel-agents`
+
+**Triggers:** "investigate these failures in parallel", "dispatch parallel agents", "investigate multiple independent issues at once"
+
+**Crush Mode:** Crush does not support parallel dispatch. Investigate inline sequentially; use `implementer_agent` with `model` param if a specific model is needed.
+
+---
+
+### `mcp-cli`
+
+**Triggers:** "query mcp server", "use mcp on demand", "discover mcp tools"
+
+---
+
+### `using-tmux-for-interactive-commands`
+
+**Triggers:** "run interactive CLI tool", "vim in terminal", "git rebase -i", "Python REPL"
+
+---
+
+### `writing-skills`
+
+**Triggers:** "create a skill", "write a SKILL.md", "test this skill", "improve this skill"
+
+**Invariant:** every SKILL.md must use VS Code tool names (not Claude Code / Cursor names). See banned list in `AGENTS.md`.
+
+---
+
+## 2. Agents
+
+All agents live in `agents/{Name}.agent.md` and install to `~/.copilot/agents/{Name}.agent.md`.
+
+### `ImplementerAgent`
+
+- **Role:** TDD implementer — writes failing test, then implementation, then commits
+- **Tools:** read, search, write, execute
+- **Reports:** DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED
+
+### `SpecReviewerAgent`
+
+- **Role:** Read-only spec compliance checker
+- **Tools:** read, search (NO write, NO execute)
+- **Reports:** ✅ COMPLIANT or ❌ with specific unmet requirements + file/line refs
+
+### `CodeQualityReviewerAgent`
+
+- **Role:** Read-only code quality reviewer
+- **Tools:** read, search (NO write, NO execute)
+- **Reports:** ✅ APPROVED or Critical / Important / Minor issues with file/line refs
+
+### `Adversarial-r0`
+
+- **Role:** Hostile plan reviewer — rotation slot 0 — GPT-4.1 (OpenAI)
+- **Tools:** read, search (NO write)
+- **Dispatch:** via `bof:adversarial-review` only; writes `.adversarial/` report
+
+### `Adversarial-r1`
+
+- **Role:** Hostile plan reviewer — rotation slot 1 — Claude Opus 4 (higher capability)
+- **Tools:** read, search (NO write)
+
+### `Adversarial-r2`
+
+- **Role:** Hostile plan reviewer — rotation slot 2 — GPT-4o (OpenAI)
+- **Tools:** read, search (NO write)
+
+---
+
+## 3. bof-mcp MCP Server
+
+Located in `bof-mcp/`. Build: `cd bof-mcp && go build -o bof-mcp .`
+
+### Startup flags
+
+| Flag | Env var | Default | Description |
+|------|---------|---------|-------------|
+| `--project-root` | `BOF_PROJECT_ROOT` | `$PWD` | Project root for `.adversarial/` state files |
+| `--no-adversarial` | `BOF_NO_ADVERSARIAL` | `false` | Disable `adversarial_review` + `gate_review` |
+| `--default-model` | `BOF_DEFAULT_MODEL` | `""` | Default model for dispatch tools |
+
+### Tool: `discover_models`
+
+Probes available Crush models in the background. Returns JSON:
+```json
+{
+  "models": [{"id": "copilot/gpt-4.1", "provider": "copilot", "available": true, "probed_at": "..."}],
+  "probing": false,
+  "stale": false,
+  "cached_at": "2026-04-19T12:00:00Z",
+  "probe_errors": [],
+  "cache_error": ""
+}
+```
+Cache TTL: 1 day. Override: `BOF_MODEL_CACHE_TTL_DAYS`. Force refresh: `force_refresh: true`.
+
+### Tool: `implementer_agent`
+
+```json
+{"task_content": "...", "model": "copilot/claude-sonnet-4.6", "project_root": "/optional/override"}
+```
+Strips `.agent.md` frontmatter, prepends ImplementerAgent instructions, runs `crush run --model {model} --quiet` with prompt via stdin.
+
+### Tool: `spec_review`
+
+```json
+{"spec_content": "...", "model": "copilot/gpt-4.1"}
+```
+Dispatches SpecReviewerAgent role via `crush run`.
+
+### Tool: `quality_review`
+
+```json
+{"code_content": "...", "model": "copilot/gpt-4.1"}
+```
+Dispatches CodeQualityReviewerAgent role via `crush run`.
+
+### Tool: `adversarial_review`
+
+```json
+{"plan_slug": "my-plan", "plan_content": "...", "exclude_model": "copilot/claude-sonnet-4.6"}
+```
+- `plan_slug`: basename of plan file without `.md`; must not contain `/`, `\`, or `..`
+- `exclude_model`: exact case-insensitive match against pool entries; use full `provider/model` string from `discover_models`
+- Pool: slot 0 = `copilot/gpt-4.1`, slot 1 = `copilot/claude-opus-4`, slot 2 = `copilot/gpt-4o`
+- Rotation: `slot = state.Iteration % 3`
+- Writes verdict to `.adversarial/{plan_slug}.json`
+
+### Tool: `gate_review`
+
+```json
+{"strict": false}
+```
+Reads all `.adversarial/*.json`. Returns `{"blocked": true/false, "reason": "...", "blocking_plans": [...]}`.
+
+---
+
+## 4. Bootstrap Instructions
+
+`instructions/bof-bootstrap.instructions.md` — injected into every VS Code Copilot Chat session via `applyTo: "**"`.
+
+Provides:
+- Priority order: project AGENTS.md → bof skills → default Copilot behavior
+- AST-aided navigation hints (if `code_ast.duckdb` present)
+- Available skills list with auto-trigger descriptions
+- Tool name mapping table (banned → correct)
+- Esquisse integration protocol
+- Adversarial review integration
+
+---
+
+## 5. Tool Name Invariant
+
+These Claude Code / Cursor names are **banned** in all bof skill content:
+
+| Banned | Correct (VS Code) |
+|--------|--------------------|
+| `Bash(...)` | `run_in_terminal` |
+| `Task(...)` | `runSubagent("AgentName", prompt)` |
+| `TodoWrite` | `manage_todo_list` |
+| `AskUserQuestion` | `vscode_askQuestions` |
+| `Read` | `read_file` |
+| `Edit` | `replace_string_in_file` |
+| `CLAUDE.md` | `AGENTS.md` |
+| `superpowers:` | `bof:` |
+
+---
+
+## 6. Document Conventions
+
+- Spec files: `docs/specs/YYYY-MM-DD-{topic}-design.md`
+- Task files: `docs/tasks/P{n}-{nnn}-{slug}.md`
+- ADRs: `docs/adr/ADR-{nnnn}-{slug}.md`
+- Adversarial state: `.adversarial/{plan-slug}.json`
+- Adversarial reports: `.adversarial/reports/review-{date}-iter{n}.md`

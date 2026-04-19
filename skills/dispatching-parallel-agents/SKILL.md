@@ -17,6 +17,9 @@ parallel. "Parallel" here means dispatching multiple agents in quick succession
 without waiting for one to finish before starting the next — VS Code schedules them.
 The practical benefit is reduced total wall-clock time on investigations.
 
+> **Crush compatibility:** `runSubagent` is not available in Crush. Perform
+> each investigation inline, one after another, in the same session.
+
 ---
 
 ## When to Use
@@ -116,3 +119,12 @@ Fix issues sequentially, not in parallel:
 - Giving agents overlapping file scope — findings will conflict
 - Skipping synthesis — acting on each agent's finding independently misses interactions
 - Using parallel dispatch for exploratory work where scope is unknown
+
+## Crush Mode (bof-mcp)
+
+> **VS Code users:** Use the native `runSubagent(...)` dispatch path above.
+
+Crush does not support parallel agent dispatch. Perform each investigation
+inline in the current session, one after another. No bof-mcp tool is required
+for investigation-only work. If investigation tasks need to be run on a specific
+model, use `implementer_agent` with `model` set appropriately.

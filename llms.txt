@@ -1,0 +1,81 @@
+# bof — LLM Quick Index
+
+> A skill library that gives VS Code Copilot Chat and Crush structured developer workflows.
+> Pure markdown (skills + agents) with one exception: `bof-mcp/` is a Go MCP server.
+
+---
+
+## Skills (VS Code auto-triggers from `~/.copilot/skills/`)
+
+| Skill | Trigger phrases |
+|-------|----------------|
+| `brainstorming` | "I want to add", "help me design", "plan a feature", "brainstorm", "let's build" |
+| `writing-plans` | "write an implementation plan", "plan this feature", "create tasks for", "break this down" |
+| `executing-plans` | "execute the plan", "work through these tasks", "implement tasks one by one" |
+| `subagent-driven-development` | "execute the plan", "start implementation with subagents", "implement these tasks" |
+| `adversarial-review` | "adversarial review", "review this plan adversarially", "run adversarial review" |
+| `test-driven-development` | "implement this function", "write this feature", "fix this bug", "add this method" |
+| `verification-before-completion` | "done", "complete", "fixed", "tests pass", "ready to commit" |
+| `systematic-debugging` | "test is failing", "this bug", "unexpected behavior", "why is this broken" |
+| `requesting-code-review` | "request code review", "review my changes", "review this implementation" |
+| `receiving-code-review` | "I received code review feedback", "reviewer says I should" |
+| `using-git-worktrees` | "create a worktree", "set up isolated workspace", "start work on new feature branch" |
+| `finishing-a-development-branch` | "implementation is complete", "merge this branch", "create a PR" |
+| `dispatching-parallel-agents` | "investigate these failures in parallel", "dispatch parallel agents" |
+| `mcp-cli` | "query mcp server", "use mcp on demand", "discover mcp tools" |
+| `using-tmux-for-interactive-commands` | "run interactive CLI tool", "vim in terminal", "git rebase -i" |
+| `writing-skills` | "create a skill", "write a SKILL.md", "test this skill", "improve this skill" |
+
+---
+
+## Agents (`~/.copilot/agents/`)
+
+| Agent | Role |
+|-------|------|
+| `ImplementerAgent` | Full read/write/execute — TDD implementer |
+| `SpecReviewerAgent` | Read-only — spec compliance review |
+| `CodeQualityReviewerAgent` | Read-only — code quality review |
+| `Adversarial-r0` | Read-only — GPT-4.1, hostile plan reviewer, slot 0 |
+| `Adversarial-r1` | Read-only — Claude Opus 4, hostile plan reviewer, slot 1 |
+| `Adversarial-r2` | Read-only — GPT-4o, hostile plan reviewer, slot 2 |
+
+---
+
+## bof-mcp Tools (MCP server for Crush / VS Code via MCP)
+
+| Tool | Description |
+|------|-------------|
+| `discover_models` | List available Crush models with availability status |
+| `implementer_agent` | Dispatch ImplementerAgent via Crush |
+| `spec_review` | Dispatch SpecReviewerAgent via Crush |
+| `quality_review` | Dispatch CodeQualityReviewerAgent via Crush |
+| `adversarial_review` | Run adversarial review round via 3-slot model pool |
+| `gate_review` | Check `.adversarial/` verdict status |
+
+`adversarial_review` and `gate_review` are disabled with `--no-adversarial`.
+
+---
+
+## Install
+
+```sh
+# VS Code Copilot Chat (from WSL)
+bash scripts/install.sh
+
+# bof-mcp binary
+cd bof-mcp && go build -o bof-mcp .
+```
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `AGENTS.md` | Project constitution — invariants, conventions, scope |
+| `ONBOARDING.md` | Mental model, workflow data flow, key files map |
+| `GLOSSARY.md` | Canonical vocabulary |
+| `instructions/bof-bootstrap.instructions.md` | Always-on session context injection |
+| `docs/specs/tool-mapping.md` | Claude Code → VS Code tool name mapping |
+| `docs/planning/ROADMAP.md` | Phase plan and task status |
+| `bof-mcp/README.md` | bof-mcp build, config, tool reference |

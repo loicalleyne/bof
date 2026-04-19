@@ -114,6 +114,7 @@
 | P6-004 README.md | ⬜ Ready | Install guide, skill list, Esquisse notes |
 | P6-005 hooks/bof-hooks.json.tpl + scripts | ⬜ Ready | SessionStart, SubagentStart, Stop hooks |
 | P6-006 tests/triggers/ | ⬜ Ready | 14 manual trigger test checklists |
+| P6-007 install_crush.sh | ⬜ Ready | Idempotent skill installer for Crush; symlinks skills/ into ~/.config/crush/skills/ |
 
 ### P6 Gate Checklist
 - [ ] `bash scripts/install.sh` runs idempotently from WSL
@@ -126,6 +127,21 @@
 ## Completed Phases
 
 None yet.
+
+---
+
+## P7 — Crush Compatibility
+
+| Task | Status | What |
+|---|---|---|
+| P7-001 bof-mcp-server | ✅ Done | Go MCP server: 6 tools, embed, `--no-adversarial`, model cache, README |
+| P7-002 crush-mode-skill-sections | ✅ Done | Skills: Crush-mode sections for each skill |
+| P7-003 roadmap-agents-update | ✅ Done | ROADMAP + AGENTS.md P7 updates |
+
+### P7 Gate Checklist
+- [x] P7-001 `bof-mcp` binary builds clean (`go build -o bof-mcp .`)
+- [x] P7-002 Crush-mode sections added to skills
+- [x] P7-003 ROADMAP and AGENTS.md updated
 
 ---
 

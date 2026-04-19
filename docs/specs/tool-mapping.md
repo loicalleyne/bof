@@ -1,31 +1,36 @@
-# Tool Mapping: Claude Code → VS Code Copilot Chat
+# Tool Mapping: Claude Code → VS Code Copilot Chat → Crush
 
 This document is the canonical reference for translating upstream `superpowers`
 skill content (authored for Claude Code / Cursor) to VS Code Copilot Chat
 terminology. Any skill containing a banned term from the left column is a bug.
 
+The Crush column documents equivalents for
+[charm.land/crush](https://github.com/charmbracelet/crush) — skills symlinked
+into `~/.config/crush/skills/` are loaded by Crush and the LLM should use the
+Crush tool name when running inside Crush.
+
 ---
 
 ## Tool Name Mapping
 
-| Claude Code Tool | VS Code Copilot Chat Tool | Notes |
-|---|---|---|
-| `Bash(command)` | `run_in_terminal` | Standard terminal execution |
-| `Task("AgentName", prompt)` | `runSubagent("AgentName", prompt)` | Dispatches a named `.agent.md` agent; sequential |
-| `TodoWrite` | `manage_todo_list` | Task tracking; persists within session |
-| `AskUserQuestion(...)` | `vscode_askQuestions` | Structured Q&A with types options, multi-select |
-| `Read(file)` | `read_file` | File read with line range support |
-| `Edit(file, ...)` | `replace_string_in_file` | Single targeted replacement |
-| `MultiEdit(file, ...)` | `multi_replace_string_in_file` | Multiple replacements per file |
-| `Write(file, content)` | `create_file` | Create new file |
-| `WebFetch(url)` | `fetch_webpage` | Web content retrieval |
-| `glob(pattern)` | `file_search` | File find by glob pattern |
-| `grep(pattern)` / `Grep(...)` | `grep_search` | Text search with regex support |
-| `ls(dir)` | `list_dir` | Directory listing |
-| (implicit) | `semantic_search` | Natural language code search |
-| `get_terminal_output(id)` | `get_terminal_output` | Same name — direct port |
-| (none) | `vscode_listCodeUsages` | Find all usages of a symbol |
-| (none) | `get_errors` | Get compile/lint errors |
+| Claude Code Tool | VS Code Copilot Chat Tool | Crush Tool | Notes |
+|---|---|---|---|
+| `Bash(command)` | `run_in_terminal` | `bash` | Standard terminal execution |
+| `Task("AgentName", prompt)` | `runSubagent("AgentName", prompt)` | *(inline — no subagent dispatch)* | VS Code only; Crush implements inline |
+| `TodoWrite` | `manage_todo_list` | `todos` | Task tracking; persists within session |
+| `AskUserQuestion(...)` | `vscode_askQuestions` | *(ask inline in response)* | VS Code only; Crush asks as plain text |
+| `Read(file)` | `read_file` | `view` | File read with line range support |
+| `Edit(file, ...)` | `replace_string_in_file` | `edit` | Single targeted replacement |
+| `MultiEdit(file, ...)` | `multi_replace_string_in_file` | `multiedit` | Multiple replacements per file |
+| `Write(file, content)` | `create_file` | `write` | Create/overwrite file |
+| `WebFetch(url)` | `fetch_webpage` | `web_fetch` | Web content retrieval |
+| `glob(pattern)` | `file_search` | `glob` | File find by glob pattern |
+| `grep(pattern)` / `Grep(...)` | `grep_search` | `grep` | Text search with regex support |
+| `ls(dir)` | `list_dir` | `ls` | Directory listing |
+| (implicit) | `semantic_search` | `grep` | Natural language → text search in Crush |
+| `get_terminal_output(id)` | `get_terminal_output` | `job_output` | Background job output |
+| (none) | `vscode_listCodeUsages` | `lsp_references` | Find all usages of a symbol |
+| (none) | `get_errors` | `lsp_diagnostics` | Get compile/lint/LSP errors |
 
 ---
 
@@ -109,3 +114,28 @@ Run before each skill is marked complete:
 ```sh
 grep -rn "Bash(\|Task(\|TodoWrite\|AskUserQuestion\|CLAUDE\.md\|superpowers:" skills/
 ```
+
+---
+
+## Crush Tool Quick-Reference
+
+When writing skills that should work in both VS Code and Crush, use
+`tool-name` (VS Code) / `tool-name` (Crush) notation inline, or a
+`**Tools (VS Code / Crush):**` header in the Prerequisites section.
+
+| Scenario | VS Code | Crush |
+|---|---|---|
+| Run a shell command | `run_in_terminal` | `bash` |
+| Read a file | `read_file` | `view` |
+| Edit a file (targeted replace) | `replace_string_in_file` | `edit` |
+| Multiple replacements | `multi_replace_string_in_file` | `multiedit` |
+| Create / overwrite file | `create_file` | `write` |
+| Search by filename | `file_search` | `glob` |
+| Search file contents | `grep_search` | `grep` |
+| List directory | `list_dir` | `ls` |
+| Fetch a web page | `fetch_webpage` | `web_fetch` |
+| Task tracking | `manage_todo_list` | `todos` |
+| Compile/lint errors | `get_errors` | `lsp_diagnostics` |
+| Find symbol usages | `vscode_listCodeUsages` | `lsp_references` |
+| Structured Q&A with user | `vscode_askQuestions` | *(ask inline as plain text)* |
+| Dispatch named subagent | `runSubagent("Name", prompt)` | *(implement inline)* |

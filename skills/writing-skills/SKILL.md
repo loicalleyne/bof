@@ -48,13 +48,15 @@ A **skill** is a reference guide for proven techniques, patterns, or tools. Skil
 
 ## SKILL.md Structure
 
-**Frontmatter (YAML):**
-- Two required fields: `name` and `description`
-- Max 1024 characters total
-- `name`: Use letters, numbers, and hyphens only
-- `description`: Third-person; describes ONLY **when to use** (NOT what it does)
+**Frontmatter (YAML) — VS Code Copilot Chat:**
+
+VS Code parses **only `name` and `description`**. All other frontmatter fields are silently ignored.
+
+- `name`: letters, numbers, and hyphens only; ≤64 chars
+- `description`: ≤1024 chars — **the only auto-trigger mechanism**. Third-person; describes ONLY **when to use** (NOT what it does)
   - Start with "Use when…" to focus on triggering conditions
   - Include specific symptoms, situations, and contexts
+  - Include "DO NOT USE when…" guards — there is no separate `not:` field; embed them here
   - **NEVER summarize the skill's process or workflow** — description summarizing workflow creates a shortcut the agent will take instead of reading the full skill body
   - Keep under 500 characters if possible
 
@@ -64,8 +66,30 @@ name: skill-name-with-hyphens
 description: >
   Use when [specific triggering conditions and symptoms]. Include
   the exact phrases a user would type to invoke this workflow.
+  DO NOT USE when [overlapping domain — name the correct skill].
 ---
 ```
+
+**Charmbracelet Crush** additionally parses three optional fields:
+
+```yaml
+---
+name: skill-name-with-hyphens
+description: >
+  Use when …
+license: MIT                                    # optional: SPDX identifier
+compatibility: "VS Code Copilot Chat 1.115+ / Crush"    # optional: ≥00 chars
+metadata:                                       # optional: map[string]string
+  category: workflow
+---
+```
+
+**Fields that are NOT supported in either runtime** (silently dropped — do not add):
+`triggers:`, `not:`, `tools_required:`, `updated:`
+
+Document required tools in `## Prerequisites` body using dual-platform notation:
+`**Tools (VS Code / Crush):** \`read_file\`/\`view\`, \`create_file\`/\`write\``
+Document last-updated date as a footer: `*Last updated: YYYY-MM-DD*`
 
 **Body structure:**
 ```markdown
@@ -172,7 +196,7 @@ Agent found new rationalization? Add explicit counter. Re-test until bulletproof
 
 ## Skill Creation Checklist
 
-Use `manage_todo_list` to track each item.
+Use `manage_todo_list` (VS Code) / `todos` (Crush) to track each item.
 
 **RED Phase — Write Failing Test:**
 - [ ] Create 3+ pressure scenarios (for discipline-enforcing skills)

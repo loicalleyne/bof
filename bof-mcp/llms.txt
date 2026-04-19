@@ -1,0 +1,67 @@
+# bof-mcp — LLM Quick Index
+
+> MCP stdio server for bof: dispatches Crush agents and discovers available models.
+> Module: `github.com/loicalleyne/bof/bof-mcp`
+
+---
+
+## Tools
+
+| Tool | Input fields | Returns |
+|------|-------------|---------|
+| `discover_models` | `force_refresh: bool` | `{models, probing, stale, cached_at, probe_errors}` |
+| `implementer_agent` | `task_content: string`, `model?: string`, `project_root?: string` | Crush output string |
+| `spec_review` | `spec_content: string`, `model?: string` | Crush output string |
+| `quality_review` | `code_content: string`, `model?: string` | Crush output string |
+| `adversarial_review` | `plan_slug: string`, `plan_content: string`, `exclude_model?: string` | `{verdict, model, iteration, output}` |
+| `gate_review` | `strict?: bool` | `{blocked: bool, reason: string, blocking_plans: [...]}` |
+
+`adversarial_review` and `gate_review` are disabled when `--no-adversarial` is set.
+
+---
+
+## Flags
+
+| Flag | Env var | Default | Purpose |
+|------|---------|---------|---------|
+| `--project-root` | `BOF_PROJECT_ROOT` | `$PWD` | `.adversarial/` directory |
+| `--no-adversarial` | `BOF_NO_ADVERSARIAL` | false | Disable adversarial tools |
+| `--default-model` | `BOF_DEFAULT_MODEL` | `""` | Fallback model for dispatch |
+| *(cache)* | `BOF_MODEL_CACHE_TTL_DAYS` | `1` | Model cache TTL in days |
+
+---
+
+## Adversarial Pool Slots
+
+| Slot | Model |
+|------|-------|
+| 0 | `copilot/gpt-4.1` |
+| 1 | `copilot/claude-opus-4` |
+| 2 | `copilot/gpt-4o` |
+
+Rotation: `slot = state.Iteration % 3`. `exclude_model` is exact case-insensitive match.
+
+---
+
+## Build
+
+```sh
+cd bof-mcp
+go build -o bof-mcp .
+```
+
+Runtime dependency: `crush` binary in `PATH`.
+
+---
+
+## Key Files
+
+| File | Role |
+|------|------|
+| `main.go` | Flags, startup, probe goroutine |
+| `runner.go` | `RunCrush(ctx, model, prompt)` |
+| `dispatch.go` | implementer/spec/quality handlers |
+| `adversarial.go` | adversarial_review, gate_review |
+| `models.go` | ModelCache, discover_models |
+| `state.go` | validateSlug, ReadState, WriteState |
+| `embedded/` | go:embed sources (no `..` paths) |

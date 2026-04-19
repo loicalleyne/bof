@@ -41,7 +41,7 @@ direct execution is preferred over subagent dispatch.
    - Dependencies are clear
    - Acceptance criteria are measurable
 
-3. **Create todo list** with `manage_todo_list`. One item per task.
+3. **Create todo list** with `manage_todo_list` (VS Code) / `todos` (Crush). One item per task.
 
 4. **Verify worktree** — run `git branch` and confirm you are on the feature branch.
 
@@ -53,7 +53,7 @@ For each task, in order:
 
 1. **Mark in progress:**
    ```
-   manage_todo_list({taskId: "...", status: "in-progress"})
+   manage_todo_list / todos({taskId: "...", status: "in-progress"})
    ```
 
 2. **Follow the task steps.** Work through the task's implementation steps exactly.
@@ -67,7 +67,7 @@ For each task, in order:
 
 4. **Mark complete:**
    ```
-   manage_todo_list({taskId: "...", status: "completed"})
+   manage_todo_list / todos({taskId: "...", status: "completed"})
    ```
 
 ---

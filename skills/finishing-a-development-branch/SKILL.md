@@ -58,7 +58,7 @@ Or ask: "This branch split from main — is that correct?"
 
 ### Step 3: Present Options
 
-Present exactly these 4 options using `vscode_askQuestions`:
+Present exactly these 4 options using `vscode_askQuestions` (VS Code) / present inline as numbered list (Crush):
 
 ```
 Implementation complete. What would you like to do?
@@ -118,7 +118,7 @@ Report: "Keeping branch `<name>`. Worktree preserved at `<path>`."
 
 #### Option 4: Discard
 
-**Confirm first via `vscode_askQuestions`:**
+**Confirm first via `vscode_askQuestions` (VS Code) / explicit confirmation message (Crush):**
 ```
 This will permanently delete:
 - Branch <name>

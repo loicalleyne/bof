@@ -15,6 +15,10 @@ process, and preserves your own context for continued work.
 
 **Core principle:** Review early, review often.
 
+> **Crush compatibility:** `runSubagent` is not available in Crush. Perform
+> the code review inline: read the changed files and evaluate them against
+> the task acceptance criteria in the same session.
+
 ---
 
 ## When to Request Review

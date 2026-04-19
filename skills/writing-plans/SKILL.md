@@ -30,11 +30,18 @@ If the spec covers multiple independent subsystems, suggest breaking into separa
 
 Before defining tasks, map which files will be created or modified and what each is responsible for.
 
-If `code_ast.duckdb` exists at the project root, use the `duckdb-code` skill to map file structure and call graphs before writing tasks. This preserves context budget for the planning itself. Use file reads only when no cache exists.
+**If `code_ast.duckdb` exists (do this first):**
 
-- Design units with clear boundaries and well-defined interfaces
-- One clear responsibility per file
-- Files that change together should live together
+Use the `duckdb-code` skill to answer these questions before writing any task:
+- \"What files define types related to `{feature area}`?\" \u2014 find the integration points
+- \"What calls `{function to change}`?\" \u2014 find all call sites that will need updating
+- \"What implements `{interface to extend}`?\" \u2014 find all types that must be updated
+- \"What does `{package}` export?\" \u2014 verify the API surface before designing around it
+
+Record results in the Files table. This preserves context budget for the
+planning itself and prevents missed call sites in the Files table.
+
+**If no AST cache:** use `grep_search`/`grep` + `file_search`/`glob` to locate integration points, then read only file headers and interface sections.
 
 ---
 
@@ -153,7 +160,7 @@ After adversarial review passes, offer execution choice:
 >
 > Which approach?"
 
-Use `vscode_askQuestions` with options `["Subagent-Driven (recommended)", "Inline Execution"]`.
+Use `vscode_askQuestions` (VS Code) / ask inline (Crush) with options `["Subagent-Driven (recommended)", "Inline Execution"]`.
 
 **If Subagent-Driven chosen:** Invoke `bof:subagent-driven-development`.
 **If Inline Execution chosen:** Invoke `bof:executing-plans`.

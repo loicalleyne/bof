@@ -192,8 +192,8 @@ AI-generated plans invent things. Find the inventions.
   that is not documented?
 
 **Invented compatibility:**
-- Does the plan assume two components are compatible without citing a
-  specific tested combination?
+- Does the plan assume two components are compatible (e.g., Arrow v18 + DuckDB v1)
+  without citing a specific tested combination?
 
 ---
 
@@ -237,13 +237,29 @@ After completing all 7 attacks:
    using the report template at
    `skills/adversarial-review/references/report-template.md`.
 
-2. Update `.adversarial/state.json`:
+2. Write the plan-specific state file `.adversarial/{plan-slug}.json`
+   (path and slug provided in the dispatch instruction) using the schema
+   in **SCHEMAS.md §8** (canonical source of truth).
+   Required fields — names are exact, do not rename:
    ```json
    {
-     "iteration": N+1,
-     "last_model": "{model name you are running on}",
-     "last_verdict": "PASSED|CONDITIONAL|FAILED",
+     "plan_slug":        "{plan-slug}",
+     "iteration":        N+1,
+     "last_model":       "{model name you are running on}",
+     "last_verdict":     "PASSED|CONDITIONAL|FAILED",
      "last_review_date": "YYYY-MM-DD"
    }
    ```
-   If the file does not exist, create `.adversarial/` first.
+   If `.adversarial/` does not exist, create it first.
+
+3. The final non-empty line of the report file MUST be:
+   ```
+   Verdict: PASSED
+   ```
+   (or CONDITIONAL or FAILED). This line is machine-read by `gate-review.sh`.
+
+4. After writing files, present the verdict and issue summary to the user.
+
+5. Handoffs:
+   - `FAILED` → offer "Revise Plan" → dispatch `@EsquissePlan`
+   - `PASSED` or `CONDITIONAL` → offer "Accept and Proceed" → return to caller
