@@ -8,7 +8,6 @@
 
 3. **All errors returned, never panicked.** `mcpErr` wraps errors as MCP `IsError=true` responses.
 
-4. **`sync.RWMutex` discipline.** `modelProber` uses `RLock` for all cache reads (allows concurrent `discover_models`); `Lock` only during probe state transitions and cache writes.
 
 5. **Atomic cache writes.** Cache files are always written via temp file + `os.Rename`. No direct overwrite.
 
@@ -18,7 +17,7 @@
 
 ## Project Overview
 
-`bof-mcp` is a Go MCP stdio server that gives Crush (and VS Code via MCP) the equivalent of VS Code's `runSubagent` agent dispatch plus `discover_models` for Crush model discovery.
+`bof-mcp` is a Go MCP stdio server that gives Crush (and VS Code via MCP) the equivalent of VS Code's `runSubagent` agent dispatch.
 
 It exposes 6 tools:
 - **`implementer_agent`** — dispatches ImplementerAgent role via `crush run`
@@ -26,7 +25,6 @@ It exposes 6 tools:
 - **`quality_review`** — dispatches CodeQualityReviewerAgent role via `crush run`
 - **`adversarial_review`** — runs one adversarial review round via 3-slot model pool
 - **`gate_review`** — checks `.adversarial/` verdict status
-- **`discover_models`** — probes and caches available Crush models
 
 `adversarial_review` and `gate_review` are disabled when `--no-adversarial` is set (for coexistence with `esquisse-mcp`).
 
@@ -51,7 +49,7 @@ bof-mcp/
 ├── runner.go           ← RunCrush() — subprocess invocation via strings.NewReader stdin
 ├── adversarial.go      ← adversarial_review + gate_review handlers; 3-slot pool
 ├── dispatch.go         ← implementer_agent, spec_review, quality_review + frontmatter strip
-├── models.go           ← discover_models, ModelCache, modelProber, background probe
+├── models.go           ← Adversarial model pool management
 ├── state.go            ← .adversarial/ state r/w, validateSlug
 │
 ├── embedded/           ← Files copied here for //go:embed (no .. allowed)
@@ -89,7 +87,7 @@ go test -count=1 -race ./...
 | Dependency | Role |
 |-----------|------|
 | `github.com/modelcontextprotocol/go-sdk v1.5.0` | MCP stdio server SDK |
-| `crush` (runtime) | LLM dispatcher — `crush run --model {id} --quiet` and `crush models` |
+| `crush` (runtime) | LLM dispatcher — `crush run --model {id} --quiet` |
 
 ---
 
@@ -100,7 +98,6 @@ go test -count=1 -race ./...
 - **3-slot adversarial pool:** slot 0 = `copilot/gpt-4.1`, slot 1 = `copilot/claude-opus-4`, slot 2 = `copilot/gpt-4o`. Rotation: `slot = state.Iteration % 3` against the full `bofPool` (not the filtered pool).
 - **`validateSlug`** rejects `/`, `\`, `..`, and empty string. Allows single `.`. Secondary guard: `filepath.Clean`.
 - **Startup WARN** if `crush` not in PATH — log and continue, do not abort.
-- **Probe goroutine** wrapped in `recover()` — prevents server crash on panic.
 
 ---
 
@@ -115,10 +112,9 @@ go test -count=1 -race ./...
 ## Common Mistakes to Avoid
 
 1. **`//go:embed` with `..` paths** — fails at compile time. Copy files to `embedded/` and use relative paths within `bof-mcp/`.
-2. **`sync.Mutex` instead of `sync.RWMutex` for `modelProber`** — blocks all concurrent `discover_models` reads during 90s+ probe. Use `RLock` for reads.
-3. **`entries = p.cache.Entries` without copying** — data race: probe goroutine modifies elements in-place. Use `make` + `copy` under the `RLock`.
-4. **`state.Iteration % len(filteredPool)` for rotation** — breaks when `exclude_model` shrinks the pool. Always use `state.Iteration % 3` against `bofPool` first.
-5. **Direct cache file overwrite** — atomic write via temp file + `os.Rename` is required.
+2. **`entries = p.cache.Entries` without copying** — data race: probe goroutine modifies elements in-place. Use `make` + `copy` under the `RLock`.
+3. **`state.Iteration % len(filteredPool)` for rotation** — breaks when `exclude_model` shrinks the pool. Always use `state.Iteration % 3` against `bofPool` first.
+4. **Direct cache file overwrite** — atomic write via temp file + `os.Rename` is required.
 
 ---
 

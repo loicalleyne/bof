@@ -55,14 +55,13 @@ Exact section content for each skill is defined in spec Section 3.
 
 If bof-mcp is configured:
 
-1. Call `discover_models` first to confirm available models.
-2. Skip Steps 2–5 of this skill.
-3. Call the `adversarial_review` MCP tool directly:
+1. Skip Steps 2–5 of this skill.
+2. Call the `adversarial_review` MCP tool directly:
    - `plan_slug`: basename of the plan file (without `.md`)
    - `plan_content`: full text of the plan
    - `exclude_model`: your current implementing model ID (from `crush_info` tool; substring match is supported so you don't need the exact full string)
-4. Read the verdict from the tool response. The tool writes `.adversarial/{plan_slug}.json`.
-5. Apply the same PASSED / CONDITIONAL / FAILED response rules from Step 5.
+3. Read the verdict from the tool response. The tool writes `.adversarial/{plan_slug}.json`.
+4. Apply the same PASSED / CONDITIONAL / FAILED response rules from Step 5.
 
 **Coexistence with esquisse-mcp:** If esquisse-mcp is also configured, add
 `--no-adversarial` to your bof-mcp server args to disable bof-mcp's
@@ -85,7 +84,6 @@ Replace each `runSubagent(...)` call with the corresponding bof-mcp tool:
 | `runSubagent("SpecReviewerAgent", prompt)` | `spec_review` | Same model or a smaller/faster one |
 | `runSubagent("CodeQualityReviewerAgent", prompt)` | `quality_review` | Same model or a smaller/faster one |
 
-**Before first task:** Call `discover_models` to confirm available models.
 Use `adversarial_review` for the adversarial guard (or `gate_review` if the review already ran).
 All other steps in this skill apply unchanged.
 ```
@@ -107,7 +105,7 @@ model, use `implementer_agent` with `model` set appropriately.
 
 ## Acceptance Criteria
 
-1. `skills/adversarial-review/SKILL.md` contains a `## Crush Mode (bof-mcp)` section with the `discover_models` first-call instruction and the `adversarial_review` tool call steps.
+1. `skills/adversarial-review/SKILL.md` contains a `## Crush Mode (bof-mcp)` section with the `adversarial_review` tool call steps.
 2. `skills/subagent-driven-development/SKILL.md` contains a `## Crush Mode (bof-mcp)` section with the tool substitution table mapping `runSubagent("ImplementerAgent",...)` → `implementer_agent` etc.
 3. `skills/dispatching-parallel-agents/SKILL.md` contains a `## Crush Mode (bof-mcp)` section with the inline sequential investigation note.
 4. All three sections include the `> **VS Code users:**` callout directing VS Code users to the native path.

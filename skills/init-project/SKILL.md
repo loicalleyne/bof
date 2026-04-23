@@ -88,7 +88,7 @@ From the user's answers, compute:
 | Field | How to compute |
 |-------|---------------|
 | `PROJECT_SLUG` | kebab-case of project name |
-| `LANGUAGE_ADAPTER` | one of: `go`, `python`, `ts`, `rust`, `cpp` |
+| `LANGUAGE_ADAPTER` | one of: `go`, `python`, `ts`, `rust`, `cpp` — for Python, BUILD_CMD/TEST_CMD/LINT_CMD MUST use `uv` (e.g. `uv sync`, `uv run pytest`, `uv run ruff check`) |
 | `BUILD_CMD` | look up in TEMPLATES.md language adapters |
 | `TEST_CMD` | look up in TEMPLATES.md language adapters |
 | `LINT_CMD` | look up in TEMPLATES.md language adapters |

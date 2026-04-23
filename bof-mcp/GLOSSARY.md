@@ -20,7 +20,7 @@ The pattern of writing data to a temp file in the same directory as the target, 
 ## B
 
 **bof-mcp**
-The Go MCP stdio server in `bof/bof-mcp/`. Exposes 6 tools: `discover_models`, `implementer_agent`, `spec_review`, `quality_review`, `adversarial_review`, `gate_review`. The only non-markdown component of bof.
+The Go MCP stdio server in `bof/bof-mcp/`. Exposes 5 tools: `implementer_agent`, `spec_review`, `quality_review`, `adversarial_review`, `gate_review`. The only non-markdown component of bof.
 
 ---
 
@@ -59,15 +59,7 @@ The `adversarial_review` param that removes a specific model from the pool for a
 **frontmatter stripping**
 Removing the YAML frontmatter block (`---\n...\n---\n`) from agent `.agent.md` file content before passing to `crush run`. The frontmatter contains VS Code–specific keys (`target`, `user-invocable`, `tools`, `agents`) that are irrelevant to Crush.
 
----
 
-## M
-
-**ModelCache**
-The struct in `models.go` that holds probed `ModelEntry` records, `CachedAt` timestamp, and `ProbeCompleted` flag. Persisted to `~/.config/bof/model-cache.json`. Read via `modelProber.currentState()` (RLock); written atomically by the probe goroutine (Lock + temp file + rename).
-
-**modelProber**
-The struct in `models.go` that owns the background probe goroutine, the `ModelCache`, and the `sync.RWMutex`. The single source of truth for model availability state.
 
 ---
 
@@ -79,8 +71,7 @@ The basename of a plan document file (without `.md`), used as the key for `.adve
 **probe**
 The background process that runs `crush models` to list model IDs, then sequentially tests each with `crush run --model {id} --quiet` and a 15s timeout, recording availability in `ModelCache`.
 
-**probing state**
-When `modelProber.probing == true`, a probe goroutine is running. `discover_models` returns `"probing": true` in this state. Concurrent calls return immediately (no write-lock contention) thanks to `sync.RWMutex`.
+
 
 ---
 

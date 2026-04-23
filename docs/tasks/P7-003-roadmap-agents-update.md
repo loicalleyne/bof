@@ -57,7 +57,7 @@ bof is **pure markdown** — no build system, no binary, no runtime dependencies
 ```
 bof is **pure markdown** — no build system, no binary, no runtime dependencies —
 with one exception: `bof-mcp/` is a Go MCP server that provides Crush-compatible
-agent dispatch and model discovery. It has its own `go.mod` and must be built
+agent dispatch. It has its own `go.mod` and must be built
 separately (`cd bof-mcp && go build -o bof-mcp .`).
 ```
 
@@ -66,7 +66,7 @@ separately (`cd bof-mcp && go build -o bof-mcp .`).
 Add after the `scripts/` entry:
 
 ```
-├── bof-mcp/                               ← Go MCP server: Crush agent dispatch + model discovery
+├── bof-mcp/                               ← Go MCP server: Crush agent dispatch
 │   ├── main.go
 │   ├── tools.go
 │   ├── runner.go
@@ -111,7 +111,6 @@ In the VS Code Copilot Chat Primitives table or as a new subsection, add:
 | `implementer_agent` | Dispatches ImplementerAgent role via Crush | bof-mcp |
 | `spec_review` | Dispatches SpecReviewerAgent role via Crush | bof-mcp |
 | `quality_review` | Dispatches CodeQualityReviewerAgent role via Crush | bof-mcp |
-| `discover_models` | Lists available Crush models with availability status | bof-mcp |
 
 See `bof-mcp/README.md` for `crush.json` and `.vscode/mcp.json` configuration snippets.
 ```

@@ -36,7 +36,6 @@ Additionally, Crush can access models not available to VS Code Copilot (local Ol
 - Crush `.agent.md` equivalent definitions
 - Auto-detecting esquisse-mcp at runtime (explicit opt-out flag, not a probe)
 - A GUI, web UI, or persistent daemon
-- Hot-reload of model cache without server restart
 
 ---
 
@@ -81,7 +80,7 @@ Flags take precedence over env vars.
 
 **`adversarial_review`**
 
-Runs bof's adversarial review protocol against a plan. Embeds bof's own `skills/adversarial-review/references/` protocol and report template via `//go:embed`. Uses a 3-slot rotation pool (same family-interleaved pattern as esquisse-mcp). Runs `crush run --model {model} --quiet` with the full review prompt piped via stdin.
+Runs bof's adversarial review protocol against a plan. Embeds bof's own `skills/adversarial-review/references/` protocol and report template via `//go:embed`. Uses a 5-slot default model pool, configurable with the `BOF_MODELS` environment variable. Runs `crush run --model {model} --quiet` with the full review prompt piped via stdin.
 
 Input schema:
 ```json
@@ -110,7 +109,7 @@ These tools replace `runSubagent("AgentName", prompt)` for Crush callers and pro
 All three tools share the same pattern:
 - Accept a `prompt` string and an optional `model` string
 - If `model` is omitted and `--default-model` is configured, use the default
-- If neither is set, return an error: "model is required — call discover_models first to see available models"
+- If neither is set, return an error: "model is required"
 - Before invoking, strip YAML frontmatter from the embedded `.agent.md` preamble (everything from `---` through the closing `---` inclusive) so only the markdown body is sent to the model
 - Invoke `crush run --model {model} --quiet` with the stripped role preamble prepended to the prompt, piped via stdin
 - Return the full output
@@ -141,43 +140,6 @@ Input schema: same as `implementer_agent`.
 
 ---
 
-#### 2c. Model discovery tool (always registered)
-
-**`discover_models`**
-
-Returns a list of available Crush models with their availability status. This is the "call this first" entry point; tool description explicitly states it.
-
-Input schema:
-```json
-{
-  "force_refresh": "bool, optional — invalidate cache and re-probe immediately"
-}
-```
-
-Output:
-```json
-{
-  "models": [
-    {"id": "gemini-2.5-pro", "provider": "google", "available": true},
-    {"id": "claude-opus-4.5", "provider": "copilot", "available": true},
-    ...
-  ],
-  "cached_at": "2026-04-19T14:00:00Z",
-  "stale": false,
-  "probing": false
-}
-```
-
-**Cache behaviour:**
-- Cache file: `~/.config/bof/model-cache.json` (global, not per-project)
-- TTL: 3 days (configurable via `BOF_MODEL_CACHE_TTL_DAYS`)
-- On server startup: if no cache exists or cache is stale, launch a background goroutine that runs `crush models` to get the base list, then sequentially probes each model with a 1-token `crush run --model {id} --quiet` call (prompt: `"1"`). Server registers all tools and accepts connections immediately (non-blocking).
-- `discover_models` states:
-  - Cache fresh → full model list, `"probing": false`
-  - Cache stale → stale list + `"stale": true` + `"probing": true` (refresh in progress)
-  - No cache, probe in progress → `"probing": true`, `"models": []`, message: "Model probe in progress — call again in ~30s"
-  - No cache, probe complete → full verified list
-- `force_refresh: true` → cancels any in-progress probe, starts new probe, returns immediately with `"probing": true`
 
 ---
 
@@ -195,14 +157,13 @@ Three skills receive a new `## Crush Mode (bof-mcp)` section appended to their b
 
 If bof-mcp is configured:
 
-1. Call `discover_models` first to confirm available models.
-2. Skip Steps 2–5 of this skill.
-3. Call the `adversarial_review` MCP tool directly:
+1. Skip Steps 2–5 of this skill.
+2. Call the `adversarial_review` MCP tool directly:
    - `plan_slug`: basename of the plan file (without `.md`)
    - `plan_content`: full text of the plan
    - `exclude_model`: your current implementing model ID (from `crush_info` tool)
-4. Read the verdict from the tool response. The tool writes `.adversarial/{plan_slug}.json`.
-5. Apply the same PASSED / CONDITIONAL / FAILED response rules from Step 5.
+3. Read the verdict from the tool response. The tool writes `.adversarial/{plan_slug}.json`.
+4. Apply the same PASSED / CONDITIONAL / FAILED response rules from Step 5.
 
 **Coexistence with esquisse-mcp:** If esquisse-mcp is also configured, add
 `--no-adversarial` to your bof-mcp server args to disable bof-mcp's
@@ -225,7 +186,6 @@ Replace each `runSubagent(...)` call with the corresponding bof-mcp tool:
 | `runSubagent("SpecReviewerAgent", prompt)` | `spec_review` | Same model or a smaller/faster one |
 | `runSubagent("CodeQualityReviewerAgent", prompt)` | `quality_review` | Same model or a smaller/faster one |
 
-**Before first task:** Call `discover_models` to confirm available models.
 Use `adversarial_review` for the adversarial guard (or `gate_review` if review already ran).
 All other steps in this skill apply unchanged.
 ```
@@ -273,8 +233,7 @@ Structured for `crush_config` skill self-configuration. Sections in order:
    ```
 6. **Configure in VS Code** — verbatim `.vscode/mcp.json` snippet (same structure, different key)
 7. **Using a default model** — add `"--default-model", "gemini-2.5-pro"` to `args`
-8. **Model discovery** — "Call `discover_models` first. On first server start, bof-mcp probes available models in the background (~30s). Call `discover_models` again after ~30s to get the full verified list."
-9. **Tool reference table** — name, description, required params, optional params
+8. **Tool reference table** — name, description, required params, optional params
 
 ---
 
@@ -285,9 +244,6 @@ Structured for `crush_config` skill self-configuration. Sections in order:
 - Embed adversarial references: `//go:embed ../skills/adversarial-review/references/*.md`
 - Frontmatter stripping: strip from first `---` through the next `---\n` (inclusive) before using embedded `.agent.md` content as a preamble; if no closing `---` is found, use the full content as-is
 - Module: `bof-mcp/go.mod` is a standalone module (`github.com/loicalleyne/bof/bof-mcp`). No `go.work` file needed — bof-mcp is the only Go code in the repo. Build from `bof-mcp/` directory or via `go build ./bof-mcp/` from repo root (the latter requires `-C bof-mcp` or `cd` first since there is no workspace)
-- Cache file uses `os.UserHomeDir()` + `.config/bof/model-cache.json`; create directory if absent
-- Background probe goroutine: cancelled by server context on shutdown; uses a `sync.Mutex`-protected struct with `probing bool`, `probeDone chan struct{}`, and `models []ModelEntry`
-- Sequential probe: `crush models` output parsed line-by-line; each model probed with `crush run --model {id} --quiet` stdin=`"1"`, timeout 15s per model; model marked `available: false` on non-zero exit or timeout
 
 ---
 
@@ -295,12 +251,12 @@ Structured for `crush_config` skill self-configuration. Sections in order:
 
 | Path | Action | What |
 |---|---|---|
-| `bof-mcp/main.go` | Create | CLI entry point, flag parsing, server startup, background probe launch |
+| `bof-mcp/main.go` | Create | CLI entry point, flag parsing, server startup |
 | `bof-mcp/tools.go` | Create | `registerTools`, tool handler wiring |
 | `bof-mcp/runner.go` | Create | `RunCrush` — `crush run` subprocess invocation (same as esquisse-mcp) |
 | `bof-mcp/adversarial.go` | Create | `adversarial_review` and `gate_review` tool handlers |
 | `bof-mcp/dispatch.go` | Create | `implementer_agent`, `spec_review`, `quality_review` handlers |
-| `bof-mcp/models.go` | Create | `discover_models` handler, cache struct, background probe goroutine |
+| `bof-mcp/models.go` | Create | Adversarial model pool management |
 | `bof-mcp/state.go` | Create | `.adversarial/*.json` read/write (same as esquisse-mcp) |
 | `bof-mcp/go.mod` | Create | Standalone module `github.com/loicalleyne/bof/bof-mcp`; no `go.work` needed |
 | `bof-mcp/README.md` | Create | Self-configuration docs (Section 4 above) |
@@ -316,7 +272,7 @@ Structured for `crush_config` skill self-configuration. Sections in order:
 
 | Task | Slug | Summary |
 |---|---|---|
-| P7-001 | `bof-mcp-server` | Go MCP server: all 6 tools, embed, flags, model cache, README |
+| P7-001 | `bof-mcp-server` | Go MCP server: 5 tools, embed, flags, README |
 | P7-002 | `crush-mode-skill-sections` | Add `## Crush Mode (bof-mcp)` to 3 skills |
 | P7-003 | `roadmap-agents-update` | Update AGENTS.md pure-markdown exception + ROADMAP.md P7 table |
 

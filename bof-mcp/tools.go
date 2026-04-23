@@ -7,16 +7,16 @@ import (
 
 // registerTools registers all bof-mcp tools on the given server.
 // When noAdversarial is true, adversarial_review and gate_review are omitted.
-func registerTools(server *mcp.Server, projectRoot, defaultModel string, noAdversarial bool, prober *modelProber) {
+func registerTools(server *mcp.Server, projectRoot, defaultModel string, noAdversarial bool) {
 	if !noAdversarial {
 		mcp.AddTool(server, &mcp.Tool{
 			Name: "adversarial_review",
-			Description: "Dispatch one adversarial review round for the given plan using a 3-slot " +
-				"rotation pool (copilot/gpt-4.1, copilot/claude-opus-4, copilot/gpt-4o). " +
-				"Reads .adversarial/{plan_slug}.json for iteration state, runs one review pass, " +
-				"and writes the verdict back to the state file. " +
-				"Pool rotation uses simple modulo: pool[iteration % 3]. " +
-				"Optional: pass exclude_model to skip the current agent's model.",
+			Description: "Dispatch one or more adversarial review rounds for the given plan using a " +
+				"family-interleaved model pool (default: 5 models from copilot, gemini). " +
+				"Reads .adversarial/{plan_slug}.json for iteration state, runs the requested rounds, " +
+				"and writes the worst verdict back to the state file. " +
+				"Configure the pool with BOF_MODELS (comma-separated provider/model). " +
+				"Optional: pass rounds (default 5, max 50) and exclude_model to skip the caller's model.",
 		}, newAdversarialHandler(projectRoot))
 
 		mcp.AddTool(server, &mcp.Tool{
@@ -49,12 +49,4 @@ func registerTools(server *mcp.Server, projectRoot, defaultModel string, noAdver
 			"Specify model to override the server default.",
 	}, newQualityReviewHandler(defaultModel))
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name: "discover_models",
-		Description: "List available crush models and their probe status. " +
-			"Returns a JSON object with models array, probing flag, and optional stale/cached_at/probe_errors/cache_error fields. " +
-			"Call this first to see which models are available before using dispatch tools. " +
-			"Set force_refresh=true to trigger a new background probe immediately. " +
-			"TTL is configured via BOF_MODEL_CACHE_TTL_DAYS (default: 1 day).",
-	}, newDiscoverHandler(prober))
 }

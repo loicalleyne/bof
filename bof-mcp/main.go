@@ -60,23 +60,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 4. Create modelProber.
-	cachePath, err := defaultCachePath()
-	if err != nil {
-		log.Printf("bof-mcp: cannot determine config dir for model cache: %v", err)
-	}
-	prober := newModelProber(cachePath, defaultProbeTTL())
-
-	// 5. Create MCP server.
+	// 4. Create MCP server.
 	server := mcp.NewServer(&mcp.Implementation{Name: "bof-mcp", Version: "0.1.0"}, nil)
 
-	// 6. Register tools.
-	registerTools(server, projectRoot, defaultModel, noAdversarial, prober)
+	// 5. Register tools.
+	registerTools(server, projectRoot, defaultModel, noAdversarial)
 
-	// 7. Launch background probe (non-blocking: only probes if cache is stale/missing).
-	go prober.startProbeIfStale(ctx)
-
-	// 8. Run MCP server (blocks until context cancelled or stdin closed).
+	// 6. Run MCP server (blocks until context cancelled or stdin closed).
 	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
 		log.Printf("bof-mcp server exited: %v", err)
 	}

@@ -105,8 +105,9 @@ For easier use, see `/home/jesse/git/interactive-command/tmux-wrapper.sh`:
 ## Common Patterns
 
 ### Python REPL
+> **Python rule:** Always use `uv` — never bare `python3`. Ensure `uv venv && uv sync` has been run first.
 ```bash
-tmux new-session -d -s python python3 -i
+tmux new-session -d -s python uv run python3 -i
 tmux send-keys -t python 'import math' Enter
 tmux send-keys -t python 'print(math.pi)' Enter
 tmux capture-pane -t python -p  # See output

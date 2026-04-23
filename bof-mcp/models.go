@@ -1,84 +1,145 @@
-// Package main — model discovery and background probe management.
+// Package main — model pool management for adversarial review rotation.
 package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
-	"strconv"
+	"sort"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// validModelIDRe matches valid model IDs: alphanumeric, hyphen, underscore, dot, slash.
-var validModelIDRe = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
+const (
+	defaultRounds = 5
+	maxRounds     = 50
+)
+
+// defaultModels is the default 5-slot model pool.
+var defaultModels = []string{
+	"copilot/claude-sonnet-4.6",
+	"copilot/gpt-4.1",
+	"copilot/claude-opus-4",
+	"copilot/gpt-4o",
+	"gemini/gemini-2.5-pro-preview-05-06",
+}
+
+// validModelRe matches valid model IDs: alphanumeric, hyphen, underscore, dot, slash.
+var validModelRe = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
 
 // runCrushFn is the function used to invoke crush — replaceable in tests.
 var runCrushFn = RunCrush
 
-// ModelEntry represents one probed model in the availability cache.
-type ModelEntry struct {
-	ID        string    `json:"id"`
-	Provider  string    `json:"provider"`
-	Available bool      `json:"available"`
-	ProbedAt  time.Time `json:"probed_at"`
+// randSource is used by buildRotationOrder; replaceable via SetRandSource.
+var randSource rand.Source
+
+// SetRandSource replaces the random source used by buildRotationOrder.
+// Not goroutine-safe — intended for test use only.
+func SetRandSource(src rand.Source) {
+	randSource = src
 }
 
-// ModelCache is the JSON schema for ~/.config/bof/model-cache.json.
-type ModelCache struct {
-	Entries        []ModelEntry `json:"entries"`
-	CachedAt       time.Time    `json:"cached_at"`
-	ProbeCompleted bool         `json:"probe_completed"`
-}
-
-// modelProber manages the background probe goroutine and disk cache.
-// All shared state is protected by mu.
-// RLock for reads; Lock only during probe state transitions and cache writes.
-type modelProber struct {
-	mu           sync.RWMutex
-	cache        *ModelCache
-	probing      bool
-	probeErrors  []string
-	cacheErr     string
-	cancelProbe  context.CancelFunc
-	done         chan struct{} // closed when current probe completes
-	cachePath    string
-	ttl          time.Duration
-	// Injectable for testing.
-	listModelsFn func(ctx context.Context) ([]string, error)
-	probeFn      func(ctx context.Context, model string) bool
-}
-
-// defaultCachePath returns ~/.config/bof/model-cache.json.
-func defaultCachePath() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+// newRand returns a *rand.Rand seeded from randSource if set, otherwise from time.Now().UnixNano().
+func newRand() *rand.Rand {
+	if randSource != nil {
+		return rand.New(randSource)
 	}
-	return filepath.Join(dir, "bof", "model-cache.json"), nil
+	return rand.New(rand.NewSource(time.Now().UnixNano()))
 }
 
-// defaultProbeTTL returns the probe TTL, defaulting to 1 day.
-// Override with BOF_MODEL_CACHE_TTL_DAYS env var.
-func defaultProbeTTL() time.Duration {
-	envVal := os.Getenv("BOF_MODEL_CACHE_TTL_DAYS")
-	if envVal != "" {
-		days, err := strconv.Atoi(envVal)
-		if err != nil || days <= 0 {
-			log.Printf("bof-mcp: invalid BOF_MODEL_CACHE_TTL_DAYS=%q, using default (1)", envVal)
-		} else {
-			return time.Duration(days) * 24 * time.Hour
+// effectiveRounds clamps n to [1, maxRounds], defaulting to defaultRounds when n < 1.
+func effectiveRounds(n int) int {
+	if n < 1 {
+		return defaultRounds
+	}
+	if n > maxRounds {
+		log.Printf("bof-mcp: rounds=%d exceeds maxRounds=%d, clamping", n, maxRounds)
+		return maxRounds
+	}
+	return n
+}
+
+// buildModelPool returns the model pool from BOF_MODELS env var.
+// Falls back to defaultModels if the var is unset or all entries are invalid.
+func buildModelPool() []string {
+	raw := os.Getenv("BOF_MODELS")
+	if raw == "" {
+		return append([]string(nil), defaultModels...)
+	}
+	var pool []string
+	for _, m := range strings.Split(raw, ",") {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if !validModelRe.MatchString(m) {
+			log.Printf("bof-mcp: BOF_MODELS entry %q contains invalid characters, skipping", m)
+			continue
+		}
+		parts := strings.SplitN(m, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			log.Printf("bof-mcp: BOF_MODELS entry %q must be provider/model, skipping", m)
+			continue
+		}
+		pool = append(pool, m)
+	}
+	if len(pool) == 0 {
+		log.Printf("bof-mcp: BOF_MODELS produced no valid entries, falling back to defaults")
+		return append([]string(nil), defaultModels...)
+	}
+	return pool
+}
+
+// excludeModelFilter returns a copy of pool with all entries that exactly match
+// exclude (case-insensitive) removed.
+// If exclude is empty: no-op. If exclusion would empty the pool: fail-open (returns pool unchanged).
+func excludeModelFilter(pool []string, exclude string) []string {
+	exclude = strings.TrimSpace(exclude)
+	if exclude == "" {
+		return pool
+	}
+	log.Printf("bof-mcp: exclude_model=%q requested", exclude)
+	if !validModelRe.MatchString(exclude) {
+		log.Printf("bof-mcp: exclude_model=%q is malformed, ignoring", exclude)
+		return pool
+	}
+	excludeLower := strings.ToLower(exclude)
+	filtered := make([]string, 0, len(pool))
+	for _, m := range pool {
+		if strings.ToLower(m) != excludeLower {
+			filtered = append(filtered, m)
 		}
 	}
-	return 24 * time.Hour
+	if len(filtered) == 0 {
+		log.Printf("bof-mcp: exclude_model=%q would empty pool; ignoring exclusion", exclude)
+		return pool
+	}
+	if len(filtered) == len(pool) {
+		log.Printf("bof-mcp: exclude_model=%q matched no pool entries (no-op)", exclude)
+	}
+	return filtered
+}
+
+// errAllModelsUnavailable is returned when every model in the pool is blocked.
+var errAllModelsUnavailable = errors.New("all models in the pool are unavailable " +
+	"(enterprise policy may be blocking them); " +
+	"set BOF_MODELS to a list of models known to be accessible")
+
+// modelUnavailablePatterns are case-insensitive substrings that indicate a model
+// is blocked by enterprise policy rather than a transient error.
+var modelUnavailablePatterns = []string{
+	"model is not supported",
+	"model not supported",
+	"not available for your organization",
+	"not enabled for your organization",
+	"access to this model",
+	"model access denied",
+	"this model is not available",
+	"not supported via",
 }
 
 // providerOf extracts the provider prefix (before the first "/") from a model string.
@@ -89,382 +150,161 @@ func providerOf(model string) string {
 	return model
 }
 
-// newModelProber creates a modelProber with default crush-based list and probe functions.
-func newModelProber(cachePath string, ttl time.Duration) *modelProber {
-	return newModelProberWithFuncs(cachePath, ttl,
-		func(ctx context.Context) ([]string, error) {
-			crushPath, err := exec.LookPath("crush")
-			if err != nil {
-				return nil, fmt.Errorf("crush not in PATH: %w", err)
-			}
-			cmd := exec.CommandContext(ctx, crushPath, "models")
-			out, err := cmd.Output()
-			if err != nil {
-				return nil, fmt.Errorf("crush models failed: %w", err)
-			}
-			var models []string
-			for _, line := range strings.Split(string(out), "\n") {
-				line = strings.TrimSpace(line)
-				if line == "" || strings.HasPrefix(line, "#") {
-					continue
-				}
-				if !validModelIDRe.MatchString(line) {
-					log.Printf("bof-mcp: skipping invalid model ID from crush models: %q", line)
-					continue
-				}
-				models = append(models, line)
-			}
-			return models, nil
-		},
-		func(ctx context.Context, model string) bool {
-			// Probe with "1" as prompt content; 15s timeout enforced by caller.
-			res, err := runCrushFn(ctx, model, "1")
-			if err != nil {
-				return false
-			}
-			if res.ExitCode == 0 {
-				return true
-			}
-			lower := strings.ToLower(res.Output)
-			for _, pattern := range []string{
-				"model is not supported",
-				"model not supported",
-				"not available for your organization",
-				"not enabled for your organization",
-				"access to this model",
-				"model access denied",
-				"this model is not available",
-			} {
-				if strings.Contains(lower, pattern) {
-					return false
-				}
-			}
-			return true // transient error: fail-open
-		},
-	)
-}
-
-// newModelProberWithFuncs creates a modelProber with injectable functions (for testing).
-func newModelProberWithFuncs(cachePath string, ttl time.Duration, listFn func(context.Context) ([]string, error), probeFn func(context.Context, string) bool) *modelProber {
-	p := &modelProber{
-		cachePath:    cachePath,
-		ttl:          ttl,
-		listModelsFn: listFn,
-		probeFn:      probeFn,
-	}
-	if cachePath == "" {
-		log.Printf("bof-mcp: running without model-cache.json (UserConfigDir failed)")
-	} else {
-		if err := p.loadCache(); err != nil && !os.IsNotExist(err) {
-			log.Printf("bof-mcp: failed to load model cache: %v", err)
+// familyInterleaveShuffle returns a permutation of pool where models from the
+// same provider are spread out as evenly as possible.
+// Uses rng for intra-group shuffling; O(n²), acceptable for n≤10.
+func familyInterleaveShuffle(pool []string, rng *rand.Rand) []string {
+	order := make([]string, 0, len(pool))
+	groups := make(map[string][]string)
+	providers := make([]string, 0)
+	for _, m := range pool {
+		p := providerOf(m)
+		if _, seen := groups[p]; !seen {
+			providers = append(providers, p)
 		}
+		groups[p] = append(groups[p], m)
 	}
-	return p
-}
-
-func (p *modelProber) loadCache() error {
-	if p.cachePath == "" {
-		return nil
+	for _, p := range providers {
+		g := groups[p]
+		rng.Shuffle(len(g), func(i, j int) { g[i], g[j] = g[j], g[i] })
+		groups[p] = g
 	}
-	data, err := os.ReadFile(p.cachePath)
-	if err != nil {
-		return err
+	sort.Strings(providers)
+	remaining := make(map[string][]string, len(groups))
+	for k, v := range groups {
+		remaining[k] = append([]string(nil), v...)
 	}
-	var cache ModelCache
-	if err := json.Unmarshal(data, &cache); err != nil {
-		return err
-	}
-	// Drop invalid model IDs from cached entries.
-	valid := make([]ModelEntry, 0, len(cache.Entries))
-	for _, e := range cache.Entries {
-		if validModelIDRe.MatchString(e.ID) {
-			valid = append(valid, e)
-		} else {
-			log.Printf("bof-mcp: invalid model ID in cache: %q, dropping", e.ID)
-		}
-	}
-	cache.Entries = valid
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.cache = &cache
-	return nil
-}
-
-// saveCache atomically writes the cache to disk via temp file + rename.
-// On failure it stores the error string in p.cacheErr (returned by discover_models).
-func (p *modelProber) saveCache() {
-	if p.cachePath == "" {
-		return
-	}
-
-	p.mu.RLock()
-	cache := p.cache
-	p.mu.RUnlock()
-	if cache == nil {
-		return
-	}
-
-	data, err := json.Marshal(cache)
-	if err != nil {
-		log.Printf("bof-mcp: failed to encode model cache: %v", err)
-		p.mu.Lock()
-		p.cacheErr = fmt.Sprintf("encode cache: %v", err)
-		p.mu.Unlock()
-		return
-	}
-
-	dir := filepath.Dir(p.cachePath)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		log.Printf("bof-mcp: failed to create cache dir %q: %v", dir, err)
-		p.mu.Lock()
-		p.cacheErr = fmt.Sprintf("mkdir cache dir: %v", err)
-		p.mu.Unlock()
-		return
-	}
-
-	tmp, err := os.CreateTemp(dir, "model-cache-*.json")
-	if err != nil {
-		log.Printf("bof-mcp: failed to create cache temp file: %v", err)
-		p.mu.Lock()
-		p.cacheErr = fmt.Sprintf("create temp file: %v", err)
-		p.mu.Unlock()
-		return
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		p.mu.Lock()
-		p.cacheErr = fmt.Sprintf("write temp file: %v", err)
-		p.mu.Unlock()
-		return
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		p.mu.Lock()
-		p.cacheErr = fmt.Sprintf("close temp file: %v", err)
-		p.mu.Unlock()
-		return
-	}
-	if err := os.Rename(tmpName, p.cachePath); err != nil {
-		_ = os.Remove(tmpName)
-		log.Printf("bof-mcp: failed to rename cache temp file: %v", err)
-		p.mu.Lock()
-		p.cacheErr = fmt.Sprintf("rename cache: %v", err)
-		p.mu.Unlock()
-		return
-	}
-	p.mu.Lock()
-	p.cacheErr = "" // clear any prior error on success
-	p.mu.Unlock()
-}
-
-// startProbe launches the background probe goroutine if not already running.
-// Non-blocking: returns immediately after launching the goroutine.
-func (p *modelProber) startProbe(ctx context.Context) {
-	p.mu.Lock()
-	if p.probing {
-		p.mu.Unlock()
-		return
-	}
-	p.probing = true
-	p.probeErrors = nil
-	p.done = make(chan struct{})
-	probeCtx, cancel := context.WithCancel(ctx)
-	p.cancelProbe = cancel
-	done := p.done
-	p.mu.Unlock()
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("bof-mcp: model probe panic: %v", r)
-			}
-			p.mu.Lock()
-			p.probing = false
-			close(done)
-			p.mu.Unlock()
-			cancel()
-		}()
-
-		listCtx, cancelList := context.WithTimeout(probeCtx, 10*time.Second)
-		defer cancelList()
-		models, err := p.listModelsFn(listCtx)
-		if err != nil {
-			log.Printf("bof-mcp: failed to list models: %v", err)
-			p.mu.Lock()
-			p.probeErrors = []string{fmt.Sprintf("list models: %v", err)}
-			p.mu.Unlock()
-			return
-		}
-
-		now := time.Now().UTC()
-		entries := make([]ModelEntry, len(models))
-		for i, m := range models {
-			entries[i] = ModelEntry{
-				ID:        m,
-				Provider:  providerOf(m),
-				Available: true,
-				ProbedAt:  now,
-			}
-		}
-
-		p.mu.Lock()
-		p.cache = &ModelCache{Entries: entries, CachedAt: now}
-		p.mu.Unlock()
-
-		var probeErrs []string
-		for i, m := range models {
-			select {
-			case <-probeCtx.Done():
-				return
-			default:
-			}
-
-			modelCtx, cancelModel := context.WithTimeout(probeCtx, 15*time.Second)
-			avail := p.probeFn(modelCtx, m)
-			cancelModel()
-
-			p.mu.Lock()
-			if p.cache != nil && i < len(p.cache.Entries) {
-				p.cache.Entries[i].Available = avail
-				p.cache.Entries[i].ProbedAt = time.Now().UTC()
-			}
-			p.mu.Unlock()
-
-			if !avail {
-				probeErrs = append(probeErrs, fmt.Sprintf("model %s: unavailable or probe failed", m))
-			}
-		}
-
-		p.mu.Lock()
-		if p.cache != nil {
-			p.cache.ProbeCompleted = true
-			p.cache.CachedAt = time.Now().UTC()
-		}
-		if len(probeErrs) == len(models) && len(models) > 0 {
-			p.probeErrors = probeErrs
-		}
-		p.mu.Unlock()
-
-		p.saveCache()
-	}()
-}
-
-// startProbeIfStale starts a probe only if the cache is missing or stale.
-func (p *modelProber) startProbeIfStale(ctx context.Context) {
-	p.mu.RLock()
-	stale := p.cache == nil || time.Since(p.cache.CachedAt) > p.ttl
-	probing := p.probing
-	p.mu.RUnlock()
-
-	if probing || !stale {
-		return
-	}
-	p.startProbe(ctx)
-}
-
-// forceRefresh cancels any in-flight probe, waits for it to finish, then
-// starts a new probe.
-func (p *modelProber) forceRefresh(ctx context.Context) {
-	p.mu.Lock()
-	if p.probing && p.cancelProbe != nil {
-		p.cancelProbe()
-	}
-	p.mu.Unlock()
-
-	// Wait for old probe to finish (context cancellation kills crush subprocess quickly).
-	p.mu.RLock()
-	d := p.done
-	p.mu.RUnlock()
-	if d != nil {
-		<-d
-	}
-
-	p.startProbe(ctx)
-}
-
-// currentState returns a snapshot of the current cache state.
-// Uses RLock for concurrent-read safety.
-func (p *modelProber) currentState() (entries []ModelEntry, probing bool, stale bool, cachedAt time.Time, probeErrors []string, cacheErr string) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.cache != nil {
-		// Copy the slice to avoid a data race: the probe goroutine modifies
-		// individual elements of p.cache.Entries while holding Lock; callers
-		// iterate the returned slice after RUnlock with no lock held.
-		entries = make([]ModelEntry, len(p.cache.Entries))
-		copy(entries, p.cache.Entries)
-		cachedAt = p.cache.CachedAt
-		stale = time.Since(cachedAt) > p.ttl
-	}
-	probing = p.probing
-	probeErrors = p.probeErrors
-	cacheErr = p.cacheErr
-	return
-}
-
-// discoverInput is the input schema for the discover_models tool.
-type discoverInput struct {
-	Filter       string `json:"filter,omitempty"        jsonschema:"Optional substring filter for model names (max 200 chars)"`
-	ForceRefresh bool   `json:"force_refresh,omitempty" jsonschema:"Set to true to clear the cache and trigger a new background probe"`
-}
-
-// newDiscoverHandler returns an MCP handler that lists available crush models.
-func newDiscoverHandler(prober *modelProber) func(context.Context, *mcp.CallToolRequest, discoverInput) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, input discoverInput) (*mcp.CallToolResult, any, error) {
-		if len(input.Filter) > 200 {
-			return mcpErr("filter must not exceed 200 characters")
-		}
-
-		if input.ForceRefresh {
-			prober.forceRefresh(ctx)
-		} else {
-			_, probing, _, _, _, _ := prober.currentState()
-			if !probing {
-				prober.startProbeIfStale(ctx)
-			}
-		}
-
-		entries, probing, stale, cachedAt, probeErrors, cacheErr := prober.currentState()
-
-		var models []ModelEntry
-		lowerFilter := strings.ToLower(strings.TrimSpace(input.Filter))
-		for _, m := range entries {
-			if lowerFilter != "" && !strings.Contains(strings.ToLower(m.ID), lowerFilter) {
+	last := ""
+	for len(order) < len(pool) {
+		best := ""
+		bestCount := -1
+		for _, p := range providers {
+			if p == last {
 				continue
 			}
-			models = append(models, m)
+			if cnt := len(remaining[p]); cnt > bestCount {
+				bestCount = cnt
+				best = p
+			}
 		}
-		if models == nil {
-			models = []ModelEntry{} // ensure JSON array not null
+		if best == "" || bestCount == 0 {
+			best = last
 		}
-
-		resp := map[string]interface{}{
-			"models":  models,
-			"probing": probing,
+		order = append(order, remaining[best][0])
+		remaining[best] = remaining[best][1:]
+		if len(remaining[best]) == 0 {
+			delete(remaining, best)
 		}
-		if stale {
-			resp["stale"] = true
-		}
-		if !cachedAt.IsZero() {
-			resp["cached_at"] = cachedAt.Format(time.RFC3339)
-		}
-		if len(probeErrors) > 0 {
-			resp["probe_errors"] = probeErrors
-		}
-		if cacheErr != "" {
-			resp["cache_error"] = cacheErr
-		}
-
-		respBytes, err := json.Marshal(resp)
-		if err != nil {
-			return mcpErr("failed to encode discover_models response: %v", err)
-		}
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(respBytes)}},
-		}, nil, nil
+		last = best
 	}
+	return order
+}
+
+// buildRotationOrder returns a slice of model strings of length rounds, drawn
+// from pool in family-interleaved batches of batchSize (5).
+func buildRotationOrder(pool []string, rounds int) []string {
+	const batchSize = 5
+	rng := newRand()
+	result := make([]string, 0, rounds)
+	for len(result) < rounds {
+		batch := familyInterleaveShuffle(pool, rng)
+		for len(batch) < batchSize {
+			extra := familyInterleaveShuffle(pool, rng)
+			if len(batch) > 0 && len(extra) > 0 && batch[len(batch)-1] == extra[0] {
+				if len(extra) > 1 {
+					extra[0], extra[1] = extra[1], extra[0]
+				}
+			}
+			batch = append(batch, extra...)
+		}
+		if len(result) > 0 && batch[0] == result[len(result)-1] {
+			if len(batch) > 1 {
+				batch[0], batch[1] = batch[1], batch[0]
+			}
+		}
+		take := batchSize
+		if rounds-len(result) < take {
+			take = rounds - len(result)
+		}
+		result = append(result, batch[:take]...)
+	}
+	return result
+}
+
+// worstVerdict returns the most severe verdict from the slice.
+// Severity order: FAILED > CONDITIONAL > PASSED > "".
+func worstVerdict(verdicts []string) string {
+	worst := ""
+	for _, v := range verdicts {
+		switch v {
+		case "FAILED":
+			return "FAILED"
+		case "CONDITIONAL":
+			if worst != "FAILED" {
+				worst = "CONDITIONAL"
+			}
+		case "PASSED":
+			if worst == "" {
+				worst = "PASSED"
+			}
+		}
+	}
+	return worst
+}
+
+// isModelUnavailable reports whether the crush output indicates the model is
+// blocked by enterprise policy rather than a transient error.
+func isModelUnavailable(output string) bool {
+	lower := strings.ToLower(output)
+	for _, pattern := range modelUnavailablePatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// runOneRound runs the adversarial review prompt against targetModel, falling
+// back to other pool models if the primary is unavailable.
+// bof-mcp uses stdin-based prompt passing (strings passed directly, no temp files).
+func runOneRound(ctx context.Context, pool []string, targetModel, preamble, planContent string) (usedModel, output string, err error) {
+	prompt := preamble + "\n--- PLAN CONTENT ---\n" + planContent
+
+	tryModel := func(model string) (string, bool, error) {
+		res, runErr := runCrushFn(ctx, model, prompt)
+		if runErr != nil {
+			return "", false, runErr
+		}
+		if res.ExitCode == 0 {
+			return res.Output, false, nil
+		}
+		if isModelUnavailable(res.Output) {
+			return res.Output, true, nil
+		}
+		return res.Output, false, fmt.Errorf("crush exited %d: %s", res.ExitCode, res.Output)
+	}
+
+	out, unavailable, runErr := tryModel(targetModel)
+	if runErr != nil {
+		return "", out, runErr
+	}
+	if !unavailable {
+		return targetModel, out, nil
+	}
+
+	// Primary unavailable — try remaining pool models.
+	for _, m := range pool {
+		if m == targetModel {
+			continue
+		}
+		out, unavailable, runErr = tryModel(m)
+		if runErr != nil {
+			return "", out, runErr
+		}
+		if !unavailable {
+			return m, out, nil
+		}
+	}
+
+	return "", "", errAllModelsUnavailable
 }

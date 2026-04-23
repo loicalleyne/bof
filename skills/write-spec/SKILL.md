@@ -28,7 +28,7 @@ The spec is the required input to `EsquissePlan` / `new-task`.
 - [ ] `docs/specs/` directory exists (create it if not).
 - [ ] The user has a feature idea — even a vague one is enough to start.
 
-**Tools (VS Code / Crush):** `read_file`/`view`, `create_file`/`write`, `replace_string_in_file`/`edit`
+**Tools:** `read_file`, `create_file`, `replace_string_in_file`
 
 ## Workflow
 

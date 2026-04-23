@@ -1,6 +1,6 @@
 # bof-mcp
 
-bof-mcp is an MCP server that gives Crush (and VS Code via MCP) Crush-compatible agent dispatch tools plus `discover_models` for model discovery.
+bof-mcp is an MCP server that gives Crush (and VS Code via MCP) Crush-compatible agent dispatch tools.
 
 It exposes the bof framework's agent workflow — adversarial review, implementer dispatch, spec review, and code quality review — as MCP tools that any MCP-compatible client can call.
 
@@ -76,34 +76,19 @@ Add bof-mcp as an MCP server in VS Code:
 
 ## Tool Reference
 
-> **Note:** Call `discover_models` first to see which models are available before using dispatch tools.
 
 | Tool | Description | Required params |
 |---|---|---|
-| `adversarial_review` | One adversarial review round via 3-slot rotation pool. Pool: `copilot/gpt-4.1` / `copilot/claude-opus-4` / `copilot/gpt-4o`. Writes verdict to `.adversarial/{plan_slug}.json`. | `plan_slug`, `plan_content` |
+| `adversarial_review` | Dispatch one or more adversarial review rounds for the given plan using a family-interleaved model pool (default: 5 models from copilot, gemini). Reads .adversarial/{plan_slug}.json for iteration state, runs the requested rounds, and writes the worst verdict back to the state file. Configure the pool with BOF_MODELS (comma-separated provider/model). Optional: pass rounds (default 5, max 50) and exclude_model to skip the caller's model. | `plan_slug`, `plan_content` |
 | `gate_review` | Check whether all `.adversarial/` verdicts are PASSED or CONDITIONAL. | none (optional: `strict`) |
 | `implementer_agent` | Dispatch an ImplementerAgent to implement a task document following TDD. | `task_content` |
 | `spec_review` | Dispatch a SpecReviewerAgent to review a specification document. | `spec_content` |
 | `quality_review` | Dispatch a CodeQualityReviewerAgent to review code or a diff. | `code_content` |
-| `discover_models` | List available crush models and their availability status. | none (optional: `filter`, `force_refresh`) |
 
 **`adversarial_review` and `gate_review` are hidden when `--no-adversarial` is set.**
 
 ---
 
-## Model Discovery
-
-bof-mcp probes model availability in the background on startup. The first call to `discover_models` may return `probing: true` while the probe is running (typically 30–90 seconds for ~5 models at 15s timeout each).
-
-The model cache is stored at `~/.config/bof/model-cache.json` with a default TTL of 1 day. Override with `BOF_MODEL_CACHE_TTL_DAYS`.
-
-`discover_models` returns a JSON object with:
-- `models`: array of `{id, provider, available, probed_at}` objects
-- `probing`: `true` while a probe is running
-- `stale`: `true` if the cache is older than the TTL
-- `cached_at`: ISO-8601 timestamp of last successful probe
-- `probe_errors`: array of per-model error strings (present if all probes failed)
-- `cache_error`: error string if the cache write failed (the tool still returns results)
 
 ---
 

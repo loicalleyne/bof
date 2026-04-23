@@ -202,20 +202,6 @@ Located in `bof-mcp/`. Build: `cd bof-mcp && go build -o bof-mcp .`
 | `--no-adversarial` | `BOF_NO_ADVERSARIAL` | `false` | Disable `adversarial_review` + `gate_review` |
 | `--default-model` | `BOF_DEFAULT_MODEL` | `""` | Default model for dispatch tools |
 
-### Tool: `discover_models`
-
-Probes available Crush models in the background. Returns JSON:
-```json
-{
-  "models": [{"id": "copilot/gpt-4.1", "provider": "copilot", "available": true, "probed_at": "..."}],
-  "probing": false,
-  "stale": false,
-  "cached_at": "2026-04-19T12:00:00Z",
-  "probe_errors": [],
-  "cache_error": ""
-}
-```
-Cache TTL: 1 day. Override: `BOF_MODEL_CACHE_TTL_DAYS`. Force refresh: `force_refresh: true`.
 
 ### Tool: `implementer_agent`
 
@@ -244,10 +230,17 @@ Dispatches CodeQualityReviewerAgent role via `crush run`.
 {"plan_slug": "my-plan", "plan_content": "...", "exclude_model": "copilot/claude-sonnet-4.6"}
 ```
 - `plan_slug`: basename of plan file without `.md`; must not contain `/`, `\`, or `..`
-- `exclude_model`: exact case-insensitive match against pool entries; use full `provider/model` string from `discover_models`
-- Pool: slot 0 = `copilot/gpt-4.1`, slot 1 = `copilot/claude-opus-4`, slot 2 = `copilot/gpt-4o`
-- Rotation: `slot = state.Iteration % 3`
+- `exclude_model`: exact case-insensitive match against pool entries
+- Pool: 5-slot default (see below), configurable with `BOF_MODELS` env var
+- Rotation: family-interleaved shuffle
 - Writes verdict to `.adversarial/{plan_slug}.json`
+
+**Default Pool:**
+- `copilot/claude-sonnet-4.6`
+- `copilot/gpt-4.1`
+- `copilot/claude-opus-4`
+- `copilot/gpt-4o`
+- `gemini/gemini-2.5-pro-preview-05-06`
 
 ### Tool: `gate_review`
 

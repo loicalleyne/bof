@@ -45,11 +45,6 @@
 
 | Tool | Description |
 |------|-------------|
-| `discover_models` | List available Crush models with availability status |
-| `implementer_agent` | Dispatch ImplementerAgent via Crush |
-| `spec_review` | Dispatch SpecReviewerAgent via Crush |
-| `quality_review` | Dispatch CodeQualityReviewerAgent via Crush |
-| `adversarial_review` | Run adversarial review round via 3-slot model pool |
 | `gate_review` | Check `.adversarial/` verdict status |
 
 `adversarial_review` and `gate_review` are disabled with `--no-adversarial`.

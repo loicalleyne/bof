@@ -128,7 +128,7 @@ over generic language commands.
   exported function names using the `duckdb-code` skill.
 - Otherwise: scan source files for type/class/struct definitions. For Go:
   `grep -rn 'type .* struct\|type .* interface' --include='*.go'`.
-  For Python: `grep -rn 'class ' --include='*.py'`.
+  For Python: `grep -rn 'class ' --include='*.py'`. (**Requires `uv` + venv — see Python rule below.**)
 
 **Directory structure:**
 - List all top-level directories and their purposes.
@@ -140,6 +140,8 @@ over generic language commands.
   `GEMINI.md`, `.github/copilot-instructions.md`.
 - If any exist, read them for project-specific conventions and invariants
   that should be carried into `AGENTS.md`.
+
+**Python rule:** If the project is Python, ALL commands MUST use `uv`. Never use bare `python3`, `pip`, or `virtualenv`. Set up with `uv venv && uv sync`; run any command with `uv run <cmd>` (e.g. `uv run pytest`, `uv run python script.py`).
 
 **Verify build commands:** Run the detected build and test commands to confirm
 they work. Record the results. Do not write unverified commands into AGENTS.md.
@@ -230,7 +232,7 @@ Up next: first task under framework (use new-task skill)
 Generate a first-draft `llms.txt` from the codebase:
 
 - Go: `go doc ./...` output, reformatted as the llms.txt schema
-- Python: `pdoc` or manual scan of `__init__.py` exports
+- Python: `uv run pdoc` or manual scan of `__init__.py` exports (always run via `uv run`)
 - Other: scan for exported/public symbols
 
 This is a rough first draft. Note at the top: `<!-- First draft — refine at next phase gate -->`.

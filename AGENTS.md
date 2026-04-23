@@ -12,7 +12,7 @@
 
 bof is **pure markdown** — no build system, no binary, no runtime dependencies —
 with one exception: `bof-mcp/` is a Go MCP server that provides Crush-compatible
-agent dispatch and model discovery. It has its own `go.mod` and must be built
+agent dispatch. It has its own `go.mod` and must be built
 separately (`cd bof-mcp && go build -o bof-mcp .`). The "code" is otherwise the
 prompt content and frontmatter metadata in `.md` files.
 
@@ -105,7 +105,7 @@ bof/
 ├── tests/
 │   └── triggers/                          ← manual trigger test checklist per skill
 │
-├── bof-mcp/                               ← Go MCP server: Crush agent dispatch + model discovery
+├── bof-mcp/                               ← Go MCP server: Crush agent dispatch
 │   ├── main.go
 │   ├── tools.go
 │   ├── runner.go
@@ -304,7 +304,6 @@ Prefer AST queries over file reads for: finding definitions, locating callers, m
 | `implementer_agent` | Dispatches ImplementerAgent role via Crush | bof-mcp |
 | `spec_review` | Dispatches SpecReviewerAgent role via Crush | bof-mcp |
 | `quality_review` | Dispatches CodeQualityReviewerAgent role via Crush | bof-mcp |
-| `discover_models` | Lists available Crush models with availability status | bof-mcp |
 
 See `bof-mcp/README.md` for `crush.json` and `.vscode/mcp.json` configuration snippets.
 
@@ -337,6 +336,7 @@ See `bof-mcp/README.md` for `crush.json` and `.vscode/mcp.json` configuration sn
 4. **bof:adversarial-review verdict gates execution handoff.** `writing-plans` must not hand off to `subagent-driven-development` if the adversarial verdict is FAILED. `subagent-driven-development` must check for the verdict before dispatching the first `ImplementerAgent`.
 5. **Skills are self-contained.** A skill must not assume any other bof skill is loaded. It may cross-reference other skills by name but must define its own steps completely.
 6. **`install.sh` is idempotent.** Running it twice produces the same result as running it once. It checks before linking and skips existing targets.
+7. **Python MUST use `uv` and a virtual environment.** Any skill, agent, or script that runs Python code must use `uv` — never bare `python3`, `pip`, or `virtualenv`. Create environments with `uv venv`, install with `uv sync`, run scripts with `uv run <cmd>`.
 
 ---
 
@@ -382,6 +382,11 @@ bof does NOT include and must NOT add:
    - Wrong: `writing-plans` completes → immediately dispatch `subagent-driven-development`
    - Right: `writing-plans` → `bof:adversarial-review` → PASSED/CONDITIONAL → `subagent-driven-development`
    - Why: bof:adversarial-review is a quality gate, not optional polish.
+
+7. **[Python] Using `python`, `pip`, or bare `python3` for Python projects.**
+   - Wrong: `pip install -r requirements.txt`, `python3 script.py`, `python -m pytest`
+   - Right: `uv sync`, `uv run python script.py`, `uv run pytest`
+   - Why: bof mandates `uv` with a virtual environment for all Python work. Never use bare `pip` or system Python. Always use `uv` to create the venv (`uv venv`) and run commands (`uv run <cmd>`).
 
 ---
 

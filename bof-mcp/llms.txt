@@ -1,6 +1,6 @@
 # bof-mcp — LLM Quick Index
 
-> MCP stdio server for bof: dispatches Crush agents and discovers available models.
+> MCP stdio server for bof: dispatches Crush agents.
 > Module: `github.com/loicalleyne/bof/bof-mcp`
 
 ---
@@ -9,11 +9,6 @@
 
 | Tool | Input fields | Returns |
 |------|-------------|---------|
-| `discover_models` | `force_refresh: bool` | `{models, probing, stale, cached_at, probe_errors}` |
-| `implementer_agent` | `task_content: string`, `model?: string`, `project_root?: string` | Crush output string |
-| `spec_review` | `spec_content: string`, `model?: string` | Crush output string |
-| `quality_review` | `code_content: string`, `model?: string` | Crush output string |
-| `adversarial_review` | `plan_slug: string`, `plan_content: string`, `exclude_model?: string` | `{verdict, model, iteration, output}` |
 | `gate_review` | `strict?: bool` | `{blocked: bool, reason: string, blocking_plans: [...]}` |
 
 `adversarial_review` and `gate_review` are disabled when `--no-adversarial` is set.
@@ -27,19 +22,22 @@
 | `--project-root` | `BOF_PROJECT_ROOT` | `$PWD` | `.adversarial/` directory |
 | `--no-adversarial` | `BOF_NO_ADVERSARIAL` | false | Disable adversarial tools |
 | `--default-model` | `BOF_DEFAULT_MODEL` | `""` | Fallback model for dispatch |
-| *(cache)* | `BOF_MODEL_CACHE_TTL_DAYS` | `1` | Model cache TTL in days |
 
 ---
 
-## Adversarial Pool Slots
+## Adversarial Model Pool
 
-| Slot | Model |
-|------|-------|
-| 0 | `copilot/gpt-4.1` |
-| 1 | `copilot/claude-opus-4` |
-| 2 | `copilot/gpt-4o` |
+Default 5-slot pool, configurable with `BOF_MODELS` (comma-separated `provider/model`).
 
-Rotation: `slot = state.Iteration % 3`. `exclude_model` is exact case-insensitive match.
+| Model |
+|-------|
+| `copilot/claude-sonnet-4.6` |
+| `copilot/gpt-4.1` |
+| `copilot/claude-opus-4` |
+| `copilot/gpt-4o` |
+| `gemini/gemini-2.5-pro-preview-05-06` |
+
+Rotation: family-interleaved shuffle. `exclude_model` is exact case-insensitive match.
 
 ---
 
@@ -58,10 +56,10 @@ Runtime dependency: `crush` binary in `PATH`.
 
 | File | Role |
 |------|------|
-| `main.go` | Flags, startup, probe goroutine |
+| `main.go` | Flags, startup |
 | `runner.go` | `RunCrush(ctx, model, prompt)` |
 | `dispatch.go` | implementer/spec/quality handlers |
 | `adversarial.go` | adversarial_review, gate_review |
-| `models.go` | ModelCache, discover_models |
+| `models.go` | Adversarial model pool management |
 | `state.go` | validateSlug, ReadState, WriteState |
 | `embedded/` | go:embed sources (no `..` paths) |

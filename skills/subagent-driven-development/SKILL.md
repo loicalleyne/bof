@@ -197,6 +197,5 @@ Replace each `runSubagent(...)` call with the corresponding bof-mcp tool:
 | `runSubagent("SpecReviewerAgent", prompt)` | `spec_review` | Same model or a smaller/faster one |
 | `runSubagent("CodeQualityReviewerAgent", prompt)` | `quality_review` | Same model or a smaller/faster one |
 
-**Before first task:** Call `discover_models` to confirm available models.
 Use `adversarial_review` for the adversarial guard (or `gate_review` if the review already ran).
 All other steps in this skill apply unchanged.

@@ -34,10 +34,7 @@ bof-mcp (this binary)
     ├─► gate_review
     │       └─► scan .adversarial/*.json → check last_verdict
     │
-    └─► discover_models
-            └─► background probe: crush models → sequential crush run probe
-            └─► cache: ~/.config/bof/model-cache.json (atomic write, 1-day TTL)
-            └─► returns snapshot (RLock, copy-before-return)
+    
 ```
 
 ---
@@ -75,21 +72,7 @@ bof-mcp (this binary)
 4. Any FAILED or missing verdict → `blocked=true`.
 5. `strict=true`: CONDITIONAL also blocks.
 
-### `discover_models`
 
-1. `prober.currentState()` acquires `RLock`, copies `cache.Entries` slice, returns snapshot.
-2. `force_refresh=true`: cancels current probe context, resets `probing=true`, launches new goroutine.
-3. Returns JSON: `models`, `probing`, `stale`, `cached_at`, `probe_errors`, `cache_error`.
-
-### Background probe goroutine
-
-1. `crush models` subprocess → parse output: one `provider/modelID` per line (non-TTY format).
-2. Strip whitespace, skip empty and `#`-prefixed lines.
-3. For each model ID: `crush run --model {id} --quiet` with `"1"` as stdin, 15s timeout.
-4. Record `ModelEntry{ID, Provider, Available, ProbedAt}`.
-5. Write to temp file → `os.Rename` to `~/.config/bof/model-cache.json`.
-6. Update `prober.cache` under `Lock`, set `probing=false`, close `done` channel.
-7. Entire goroutine body wrapped in `recover()` — server never crashes on probe panic.
 
 ---
 
@@ -101,7 +84,7 @@ bof-mcp (this binary)
 | `runner.go` | `RunCrush` — the single subprocess invocation function |
 | `dispatch.go` | `stripFrontmatter`, `newImplementerHandler`, `resolveModel` |
 | `adversarial.go` | `bofPool`, `newAdversarialHandler`, `excludeModelFromPool` |
-| `models.go` | `modelProber`, `currentState` (RLock + copy), `saveCache` (atomic write) |
+| `models.go` | `BOF_MODELS` environment variable parsing, `defaultModels` pool |
 | `state.go` | `validateSlug`, `ReadState`, `WriteState` |
 | `tools.go` | `registerTools` — where `--no-adversarial` gates tool registration |
 | `embedded/` | Source files for `//go:embed` (must not use `..`) |
@@ -114,21 +97,16 @@ bof-mcp (this binary)
 1. Parse flags (--project-root, --no-adversarial, --default-model)
 2. Resolve projectRoot (flag > env > PWD)
 3. exec.LookPath("crush") — WARN if missing, continue
-4. newModelProber(cachePath, TTL)
-5. mcp.NewServer(...)
-6. registerTools(server, projectRoot, noAdversarial, defaultModel, prober)
-7. go prober.startProbeIfStale(ctx)   ← non-blocking; server already registered
-8. server.Run(ctx, &mcp.StdioTransport{})   ← blocks until shutdown
+4. mcp.NewServer(...)
+5. registerTools(server, projectRoot, defaultModel, noAdversarial)
+6. server.Run(ctx, &mcp.StdioTransport{})   ← blocks until shutdown
 ```
 
-The probe launches AFTER tool registration so the server can accept `discover_models` calls immediately, even while the probe is running.
+
 
 ---
 
 ## Concurrency Notes
 
 - MCP Go SDK stdio transport processes tool handlers one at a time (serial).
-- `modelProber` runs a separate goroutine — the only source of concurrent writes to shared state.
-- `sync.RWMutex` on `modelProber`: `RLock` for `currentState()` reads; `Lock` for probe state transitions and `saveCache` writes.
-- `currentState()` copies `cache.Entries` before releasing `RLock` — callers iterate the copy after unlock with no race.
 - `WriteState` in `state.go` uses atomic write; `state.go` itself is only called from serial tool handlers (no concurrent access to state files).

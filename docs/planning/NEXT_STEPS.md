@@ -4,7 +4,7 @@
 
 ### 2026-04-19 — P7-001 bof-mcp-server Complete
 
-**What was done:** Created `bof/bof-mcp/` — a standalone Go MCP stdio server exposing 6 tools: `adversarial_review`, `gate_review`, `implementer_agent`, `spec_review`, `quality_review`, `discover_models`.
+**What was done:** Created `bof/bof-mcp/` — a standalone Go MCP stdio server exposing 5 tools: `adversarial_review`, `gate_review`, `implementer_agent`, `spec_review`, `quality_review`.
 
 **Key decision:** Go's `//go:embed` prohibits `..` in patterns. Worked around by creating `bof-mcp/embedded/` with copies of the agent `.agent.md` files and adversarial review references. Binary is self-contained. Updated `AGENTS.md` Common Mistakes with this gotcha.
 
