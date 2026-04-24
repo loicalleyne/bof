@@ -72,18 +72,36 @@ Add bof-mcp as an MCP server in VS Code:
 | `--no-adversarial` | `BOF_NO_ADVERSARIAL` | `false` | Disable `adversarial_review` and `gate_review` tools |
 | `--default-model` | `BOF_DEFAULT_MODEL` | `""` | Default model ID for dispatch tools when not specified per-call |
 
+### Model Pool (`adversarial_review`)
+
+The adversarial review pool defaults to 5 models with family-interleaved rotation:
+
+```
+copilot/claude-sonnet-4.6
+copilot/gpt-4.1
+copilot/claude-opus-4
+copilot/gpt-4o
+gemini/gemini-2.5-pro-preview-05-06
+```
+
+Override with `BOF_MODELS` (comma-separated `provider/model` entries):
+
+```sh
+export BOF_MODELS="copilot/gpt-4.1,copilot/claude-opus-4,gemini/gemini-2.5-pro-preview-05-06"
+```
+
 ---
 
 ## Tool Reference
 
 
-| Tool | Description | Required params |
-|---|---|---|
-| `adversarial_review` | Dispatch one or more adversarial review rounds for the given plan using a family-interleaved model pool (default: 5 models from copilot, gemini). Reads .adversarial/{plan_slug}.json for iteration state, runs the requested rounds, and writes the worst verdict back to the state file. Configure the pool with BOF_MODELS (comma-separated provider/model). Optional: pass rounds (default 5, max 50) and exclude_model to skip the caller's model. | `plan_slug`, `plan_content` |
-| `gate_review` | Check whether all `.adversarial/` verdicts are PASSED or CONDITIONAL. | none (optional: `strict`) |
-| `implementer_agent` | Dispatch an ImplementerAgent to implement a task document following TDD. | `task_content` |
-| `spec_review` | Dispatch a SpecReviewerAgent to review a specification document. | `spec_content` |
-| `quality_review` | Dispatch a CodeQualityReviewerAgent to review code or a diff. | `code_content` |
+| Tool | Description | Required params | Optional params |
+|---|---|---|---|
+| `adversarial_review` | Run N adversarial review rounds using a family-interleaved model pool. Reads `.adversarial/{plan_slug}.json` for state, writes worst verdict on completion. Pool configured via `BOF_MODELS`. | `plan_slug`, `plan_content` | `rounds` (default 5, max 50), `exclude_model` |
+| `gate_review` | Check whether all `.adversarial/` verdicts are PASSED or CONDITIONAL. | — | `strict` |
+| `implementer_agent` | Dispatch an ImplementerAgent to implement a task document following TDD. | `task_content` | `model` |
+| `spec_review` | Dispatch a SpecReviewerAgent to review a specification document. | `spec_content` | `model` |
+| `quality_review` | Dispatch a CodeQualityReviewerAgent to review code or a diff. | `code_content` | `model` |
 
 **`adversarial_review` and `gate_review` are hidden when `--no-adversarial` is set.**
 

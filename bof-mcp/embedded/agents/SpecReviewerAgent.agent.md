@@ -7,7 +7,7 @@ description: >
   directly — dispatched by bof:subagent-driven-development after ImplementerAgent.
 target: vscode
 user-invocable: false
-model: ['Claude Haiku 4.5 (copilot)', 'Gemini 3 Flash (Preview) (copilot)', 'Auto (copilot)']
+model: ['gemini/gemini-3.1-pro-preview-customtools']
 tools:
   - read
   - search

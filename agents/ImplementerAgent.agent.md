@@ -7,7 +7,7 @@ description: >
   dispatched by bof:subagent-driven-development.
 target: vscode
 user-invocable: false
-model: ['Auto (copilot)']
+model: ['Auto (copilot)', 'gemini/gemini-3.1-pro-preview-customtools']
 tools:
   - read
   - search
@@ -63,6 +63,13 @@ Execute these steps in order before writing any code:
   watch it fail, write minimal code, verify green.
 - Implement only what is in the task's "In Scope" list. If you find something
   that scope says to skip: skip it.
+- **Preserve existing code.** When modifying existing code, make the smallest
+  change that satisfies the requirement. Do not rename variables or functions,
+  restructure logic, add input validation, introduce helper functions, or refactor
+  anything that is not directly required by the task. The existing code was
+  deliberately written the way it was — your job is to extend or fix it precisely,
+  not to improve it. Unnecessary structural changes make code review harder and
+  introduce risk.
 - Commit after each completed logical unit with a semantic commit message.
 - If a function cannot complete its contract, return an error. Never silently
   return zero values.

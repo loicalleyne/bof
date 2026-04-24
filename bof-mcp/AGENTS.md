@@ -19,11 +19,11 @@
 
 `bof-mcp` is a Go MCP stdio server that gives Crush (and VS Code via MCP) the equivalent of VS Code's `runSubagent` agent dispatch.
 
-It exposes 6 tools:
+It exposes 5 tools:
 - **`implementer_agent`** — dispatches ImplementerAgent role via `crush run`
 - **`spec_review`** — dispatches SpecReviewerAgent role via `crush run`
 - **`quality_review`** — dispatches CodeQualityReviewerAgent role via `crush run`
-- **`adversarial_review`** — runs one adversarial review round via 3-slot model pool
+- **`adversarial_review`** — runs one or more adversarial review rounds via a family-interleaved model pool
 - **`gate_review`** — checks `.adversarial/` verdict status
 
 `adversarial_review` and `gate_review` are disabled when `--no-adversarial` is set (for coexistence with `esquisse-mcp`).
@@ -44,12 +44,12 @@ bof-mcp/
 ├── llms.txt            ← Concise API index
 ├── README.md           ← Build, config, tool reference
 │
-├── main.go             ← CLI flags, env vars, server startup, background probe launch
+├── main.go             ← CLI flags, env vars, server startup
 ├── tools.go            ← registerTools() — conditional + unconditional tool registration
 ├── runner.go           ← RunCrush() — subprocess invocation via strings.NewReader stdin
-├── adversarial.go      ← adversarial_review + gate_review handlers; 3-slot pool
+├── adversarial.go      ← adversarial_review + gate_review handlers; embedded references
 ├── dispatch.go         ← implementer_agent, spec_review, quality_review + frontmatter strip
-├── models.go           ← Adversarial model pool management
+├── models.go           ← Pool management: buildModelPool, buildRotationOrder, runOneRound
 ├── state.go            ← .adversarial/ state r/w, validateSlug
 │
 ├── embedded/           ← Files copied here for //go:embed (no .. allowed)
@@ -95,7 +95,8 @@ go test -count=1 -race ./...
 
 - **`RunCrush(ctx, model, promptContent string) (RunResult, error)`** — accepts prompt as a string, assigns `strings.NewReader(promptContent)` to `cmd.Stdin`. This differs intentionally from `esquisse-mcp` (which uses a temp file). Both patterns are secure.
 - **Frontmatter stripping:** discard `---\n...---\n` block from agent `.md` files before prepending to prompt. If no closing `---\n` is found, use full content.
-- **3-slot adversarial pool:** slot 0 = `copilot/gpt-4.1`, slot 1 = `copilot/claude-opus-4`, slot 2 = `copilot/gpt-4o`. Rotation: `slot = state.Iteration % 3` against the full `bofPool` (not the filtered pool).
+- **Adversarial model pool:** `buildModelPool()` reads `BOF_MODELS` env var (comma-separated `provider/model`); falls back to `defaultModels` (5 entries). Pool is family-interleave shuffled by `buildRotationOrder`. Rotation is not modulo-3 — it is batch-based across N rounds.
+- **`runOneRound(ctx, pool, targetModel, preamble, planContent)`** — passes combined prompt via stdin; falls back through remaining pool models when primary is unavailable (blocked by enterprise policy).
 - **`validateSlug`** rejects `/`, `\`, `..`, and empty string. Allows single `.`. Secondary guard: `filepath.Clean`.
 - **Startup WARN** if `crush` not in PATH — log and continue, do not abort.
 
@@ -112,9 +113,9 @@ go test -count=1 -race ./...
 ## Common Mistakes to Avoid
 
 1. **`//go:embed` with `..` paths** — fails at compile time. Copy files to `embedded/` and use relative paths within `bof-mcp/`.
-2. **`entries = p.cache.Entries` without copying** — data race: probe goroutine modifies elements in-place. Use `make` + `copy` under the `RLock`.
-3. **`state.Iteration % len(filteredPool)` for rotation** — breaks when `exclude_model` shrinks the pool. Always use `state.Iteration % 3` against `bofPool` first.
-4. **Direct cache file overwrite** — atomic write via temp file + `os.Rename` is required.
+2. **`exclude_model` with an empty filtered pool** — `excludeModelFilter` guards against this (fail-open: returns original pool). Do not bypass it.
+3. **Using `state.Iteration % 3` for rotation** — the pool is now N-model family-interleaved, not a fixed 3-slot ring. Use `buildRotationOrder(pool, rounds)` to get the sequence.
+4. **Passing prompt content as a shell argument** — never do this. Always use `cmd.Stdin = strings.NewReader(promptContent)`.
 
 ---
 

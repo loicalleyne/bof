@@ -58,6 +58,9 @@ For each task, in order:
 
 2. **Follow the task steps.** Work through the task's implementation steps exactly.
    - Verify your understanding of "In Scope" and "Out of Scope" before coding
+   - **Preserve existing code:** when modifying existing files, make the minimal
+     change that satisfies the criterion. Do not rename, restructure, add
+     validation, or refactor anything beyond what the task explicitly requires.
    - Run the project test command at intervals (from AGENTS.md)
    - Use `bof:test-driven-development` if tests are required
 

@@ -127,6 +127,11 @@ If CodeQualityReviewerAgent returns **Critical** or **Important** issues:
    manage_todo_list / todos({taskId: "task-slug", status: "completed"})
 ```
 
+Then **update the task document directly** (the orchestrating session does this, not the subagent):
+- Set `Status: Done`
+- Add a Session Notes entry: what was implemented, any deviations from the plan, gotchas encountered
+- If a new gotcha was found: add it to `AGENTS.md` Common Mistakes now, before the next task
+
 Proceed to next task.
 
 ---
@@ -146,20 +151,29 @@ Never ignore BLOCKED or force the same approach to retry without making a struct
 
 ## After All Tasks Complete
 
-1. **Esquisse completion protocol** (if Esquisse docs present):
-   - Verify all task docs show `Status: Done`
-   - `AGENTS.md` Common Mistakes updated (if any)
-   - `GLOSSARY.md` updated (if new terms)
-   - `ROADMAP.md` task statuses updated
-   - `docs/planning/NEXT_STEPS.md` session log updated
+**Do not proceed to finishing-a-development-branch until all of the following are done, in order.**
 
-2. **Full implementation review:**
-   ```
-   runSubagent("CodeQualityReviewerAgent", fullImplementationReviewPrompt)
-   ```
-   Review the entire implementation, not just the last task.
+### Step A: Esquisse Completion Protocol (mandatory if Esquisse docs present)
 
-3. **Invoke `bof:finishing-a-development-branch`** to merge, PR, or clean up.
+The orchestrating session performs these directly — do not delegate to a subagent:
+
+1. **Update every task doc to `Status: Done`** — use `replace_string_in_file` on each task file. Use the task document schema from `SCHEMAS.md §3`. Add a Session Notes entry: date, what was implemented, deviations from plan, gotchas. Do not leave any task at `Ready` or `In Progress`.
+2. **Update `AGENTS.md` Common Mistakes** — if any new gotcha was found during the session that was not already added per-task, add it now with the `[Category]` tag format.
+3. **Update `GLOSSARY.md`** — if any new domain terms were introduced, add them using the existing alphabetical section format.
+4. **Update `ROADMAP.md`** — change each completed task row to `Done`.
+5. **Append to `docs/planning/NEXT_STEPS.md`** — add a session log entry (see `SCHEMAS.md §6` for format): date, tasks completed, open decisions, blocked items. Use `replace_string_in_file` to append; do not overwrite the file.
+
+### Step B: Full Implementation Review
+
+```
+runSubagent("CodeQualityReviewerAgent", fullImplementationReviewPrompt)
+```
+
+Review the entire implementation across all tasks, not just the last task. If Critical or Important issues are found, fix them before proceeding.
+
+### Step C: Finish the branch
+
+**Invoke `bof:finishing-a-development-branch`** to merge, PR, or clean up.
 
 ---
 
@@ -183,6 +197,10 @@ See in this directory:
 - `implementer-prompt.md` — base context for ImplementerAgent dispatch
 - `spec-reviewer-prompt.md` — base context for SpecReviewerAgent dispatch
 - `code-quality-reviewer-prompt.md` — base context for CodeQualityReviewerAgent dispatch
+
+**Document schemas** referenced during this skill:
+- Task document format → `SCHEMAS.md §3`
+- Session log / NEXT_STEPS entry format → `SCHEMAS.md §6`
 
 ## Crush Mode (bof-mcp)
 

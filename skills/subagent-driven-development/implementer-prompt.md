@@ -32,6 +32,15 @@ Key project constraints from AGENTS.md:
 AST cache is available at: [PATH]/code_ast.duckdb
 Use the duckdb-code skill for structural queries before editing files.
 
+## Editing Constraint
+
+IMPORTANT: When modifying existing files, preserve the original code and the
+logic of the original code as much as possible. Make only the changes required
+to satisfy the acceptance criteria. Do not rename symbols, restructure functions,
+add input validation, introduce helper functions, or refactor logic unless the
+task document explicitly requires it. Unnecessary changes make code review harder
+and introduce risk.
+
 ## Status Report Format
 
 End your session with one of:

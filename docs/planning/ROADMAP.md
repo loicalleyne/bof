@@ -145,6 +145,20 @@ None yet.
 
 ---
 
+## P8 — Termux / Android Support
+
+| Task | Status | What |
+|---|---|---|
+| P8-001 install_termux.sh | ⬜ Ready | Termux/Android install: skill copy+translate, jq crush.json merge, bof-mcp build |
+
+### P8 Gate Checklist
+- [ ] `test -x scripts/install_termux.sh`
+- [ ] `bash scripts/install_termux.sh --dry-run` exits 0 without creating files
+- [ ] After real run: installed SKILL.md files contain `agent` not `runSubagent`
+- [ ] After real run: `options.skills_paths` in crush.json contains skills dir (exactly once)
+
+---
+
 ## Phase Gate — Universal Criteria (all phases)
 
 ```

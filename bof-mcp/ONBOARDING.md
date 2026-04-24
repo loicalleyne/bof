@@ -27,9 +27,9 @@ bof-mcp (this binary)
     │
     ├─► adversarial_review
     │       └─► read .adversarial/{slug}.json (iteration state)
-    │       └─► slot = iteration % 3 → select from bofPool
-    │       └─► crush run --model {model} --quiet (review prompt via stdin)
-    │       └─► write .adversarial/{slug}.json (updated state)
+    │       └─► buildModelPool() → buildRotationOrder(pool, rounds)
+    │       └─► runOneRound() per round → crush run --model {model} --quiet (prompt via stdin)
+    │       └─► worstVerdict(verdicts) → write .adversarial/{slug}.json
     │
     ├─► gate_review
     │       └─► scan .adversarial/*.json → check last_verdict
@@ -53,16 +53,16 @@ bof-mcp (this binary)
 
 ### `adversarial_review`
 
-1. Handler built in `newAdversarialHandler` (in `adversarial.go`).
+1. Handler built in `newAdversarialHandler` (in `adversarial.go`); `buildModelPool()` called once at handler construction.
 2. `validateSlug(input.PlanSlug)` — rejects path traversal.
 3. `ReadState(projectRoot, input.PlanSlug)` — reads `.adversarial/{slug}.json` or zero value.
-4. `excludeModelFromPool(bofPool, input.ExcludeModel)` — removes caller's model (exact match).
-5. `slot = state.Iteration % 3` → `selectedModel = bofPool[slot]` (stable rotation); if filtered out, fall back to `pool[slot%len(pool)]`.
-6. Embedded reference content (7-attack protocol) prepended to review preamble.
-7. `RunCrush(ctx, selectedModel, reviewPrompt)`.
-8. Verdict extracted via regex `(?m)^Verdict:\s*(PASSED|CONDITIONAL|FAILED)`.
-9. State updated and written atomically via `WriteState`.
-10. Verdict + output returned.
+4. `excludeModelFilter(pool, input.ExcludeModel)` — removes caller's model (exact case-insensitive match); fail-open if would empty pool.
+5. `rounds = effectiveRounds(input.Rounds)` — clamps to [1, 50], default 5.
+6. `rotOrder = buildRotationOrder(effectivePool, rounds)` — family-interleaved shuffle across N rounds.
+7. For each round: embedded reference content (7-attack protocol) prepended to preamble; `runOneRound(ctx, pool, rotOrder[i], preamble, planContent)` called (stdin-based, fallback through pool on unavailable).
+8. Verdict extracted from output or from written report file via regex.
+9. After all rounds: `worstVerdict(verdicts)` determines final verdict; state updated with `Iteration += rounds`, written atomically via `WriteState`.
+10. Multi-round summary returned.
 
 ### `gate_review`
 
@@ -80,11 +80,11 @@ bof-mcp (this binary)
 
 | File | What to read first |
 |------|--------------------|
-| `main.go` | Server startup order: flags → crush check → prober → server → register tools → launch probe → Run |
+| `main.go` | Server startup order: flags → crush check → server → register tools → Run |
 | `runner.go` | `RunCrush` — the single subprocess invocation function |
 | `dispatch.go` | `stripFrontmatter`, `newImplementerHandler`, `resolveModel` |
-| `adversarial.go` | `bofPool`, `newAdversarialHandler`, `excludeModelFromPool` |
-| `models.go` | `BOF_MODELS` environment variable parsing, `defaultModels` pool |
+| `adversarial.go` | `loadReferenceContent`, `newAdversarialHandler` |
+| `models.go` | `buildModelPool`, `buildRotationOrder`, `runOneRound`, `worstVerdict` |
 | `state.go` | `validateSlug`, `ReadState`, `WriteState` |
 | `tools.go` | `registerTools` — where `--no-adversarial` gates tool registration |
 | `embedded/` | Source files for `//go:embed` (must not use `..`) |
