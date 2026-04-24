@@ -35,7 +35,7 @@ The practical benefit is reduced total wall-clock time on investigations.
 - Agents need the full project context to make sense of their findings
 - Work is exploratory — unknown territory needs breadth-first, not divide-and-conquer
 - Any agent needs to read or write shared state (file locks, DB state)
-- The work involves *implementing*, not investigating — use `bof:subagent-driven-development`
+- The work involves *implementing*, not investigating — use [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md)
 
 ---
 

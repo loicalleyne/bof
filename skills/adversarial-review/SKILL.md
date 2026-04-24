@@ -53,8 +53,8 @@ model to maximise defect coverage."
 ### Step 3: Load reference documents
 
 Read both reference files into context before dispatching the reviewer:
-- `skills/adversarial-review/references/task-review-protocol.md`
-- `skills/adversarial-review/references/report-template.md`
+- [`references/task-review-protocol.md`](references/task-review-protocol.md)
+- [`references/report-template.md`](references/report-template.md)
 
 ### Step 4: Collect plan content
 

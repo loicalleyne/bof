@@ -97,8 +97,8 @@ For non-Esquisse projects, every plan starts with:
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For agentic workers:** REQUIRED SKILL: Use `bof:subagent-driven-development`
-> (recommended) or `bof:executing-plans` to implement this plan task-by-task.
+> **For agentic workers:** REQUIRED SKILL: Use [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md)
+> (recommended) or [`bof:executing-plans`](../executing-plans/SKILL.md) to implement this plan task-by-task.
 > Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** [One sentence describing what this builds]
@@ -136,13 +136,13 @@ If issues found, fix inline. If a spec requirement has no task, add the task.
 
 ## Adversarial Review Gate (REQUIRED before execution)
 
-After saving the plan and the self-review passes, run `bof:adversarial-review`:
+After saving the plan and the self-review passes, run [`bof:adversarial-review`](../adversarial-review/SKILL.md):
 
 > "Plan is complete and self-review passed. Running adversarial review before execution."
 
-**Do NOT dispatch `bof:subagent-driven-development` or `bof:executing-plans` until the adversarial review verdict is PASSED or CONDITIONAL.**
+**Do NOT dispatch [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md) or [`bof:executing-plans`](../executing-plans/SKILL.md) until the adversarial review verdict is PASSED or CONDITIONAL.**
 
-- FAILED verdict → revise the plan addressing the reviewer's objections → re-run `bof:adversarial-review`
+- FAILED verdict → revise the plan addressing the reviewer's objections → re-run [`bof:adversarial-review`](../adversarial-review/SKILL.md)
 - CONDITIONAL verdict → address blocking conditions, confirm resolution, then proceed
 - PASSED verdict → proceed to execution handoff
 
@@ -162,5 +162,5 @@ After adversarial review passes, offer execution choice:
 
 Use `vscode_askQuestions` (VS Code) / ask inline (Crush) with options `["Subagent-Driven (recommended)", "Inline Execution"]`.
 
-**If Subagent-Driven chosen:** Invoke `bof:subagent-driven-development`.
-**If Inline Execution chosen:** Invoke `bof:executing-plans`.
+**If Subagent-Driven chosen:** Invoke [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md).
+**If Inline Execution chosen:** Invoke [`bof:executing-plans`](../executing-plans/SKILL.md).

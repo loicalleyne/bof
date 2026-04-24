@@ -197,9 +197,9 @@ Ready to implement <feature-name>
 ## Integration
 
 **Called by:**
-- `bof:brainstorming` — REQUIRED when design is approved and implementation follows
-- `bof:subagent-driven-development` — REQUIRED before executing any tasks
-- `bof:executing-plans` — REQUIRED before executing any tasks
+- [`bof:brainstorming`](../brainstorming/SKILL.md) — REQUIRED when design is approved and implementation follows
+- [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md) — REQUIRED before executing any tasks
+- [`bof:executing-plans`](../executing-plans/SKILL.md) — REQUIRED before executing any tasks
 
 **Pairs with:**
-- `bof:finishing-a-development-branch` — REQUIRED for cleanup after work is complete
+- [`bof:finishing-a-development-branch`](../finishing-a-development-branch/SKILL.md) — REQUIRED for cleanup after work is complete

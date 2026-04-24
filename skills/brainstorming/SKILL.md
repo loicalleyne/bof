@@ -39,7 +39,7 @@ Use `manage_todo_list` (VS Code) / `todos` (Crush) to create a task for each ite
 6. **Write design doc** — save to `docs/specs/YYYY-MM-DD-<topic>-design.md` and commit
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope
 8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke `bof:writing-plans` to create the implementation plan
+9. **Transition to implementation** — invoke [`bof:writing-plans`](../writing-plans/SKILL.md) to create the implementation plan
 
 ---
 
@@ -61,10 +61,10 @@ Write design doc → Spec self-review (fix inline)
 User reviews spec? → Changes requested → revise → re-review
                   → Approved
         ↓
-[INVOKE bof:writing-plans]
+[INVOKE [bof:writing-plans](../writing-plans/SKILL.md)]
 ```
 
-**The terminal state is invoking `bof:writing-plans`.** Do NOT invoke any implementation skill. The ONLY skill you invoke after brainstorming is `bof:writing-plans`.
+**The terminal state is invoking [`bof:writing-plans`](../writing-plans/SKILL.md).** Do NOT invoke any implementation skill. The ONLY skill you invoke after brainstorming is [`bof:writing-plans`](../writing-plans/SKILL.md).
 
 ---
 

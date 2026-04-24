@@ -107,7 +107,7 @@ You MUST complete each phase before proceeding to the next.
 
    **If no AST cache:**
 
-   See `root-cause-tracing.md` in this directory for the complete backward
+   See [`root-cause-tracing.md`](root-cause-tracing.md) in this directory for the complete backward
    tracing technique.
 
    **Quick version:**
@@ -176,7 +176,7 @@ You MUST complete each phase before proceeding to the next.
    - Automated test if possible
    - One-off test script if no framework
    - MUST have before fixing
-   - Use `bof:test-driven-development` for writing proper failing tests
+   - Use [`bof:test-driven-development`](../test-driven-development/SKILL.md) for writing proper failing tests
 
 2. **Implement Single Fix**
    - Address the root cause identified
@@ -291,13 +291,13 @@ timing-dependent, or external:
 
 Available in this directory:
 
-- **`root-cause-tracing.md`** — Trace bugs backward through call stack to find original trigger
-- **`defense-in-depth.md`** — Add validation at multiple layers after finding root cause
-- **`condition-based-waiting.md`** — Replace arbitrary timeouts with condition polling
+- **[`root-cause-tracing.md`](root-cause-tracing.md)** — Trace bugs backward through call stack to find original trigger
+- **[`defense-in-depth.md`](defense-in-depth.md)** — Add validation at multiple layers after finding root cause
+- **[`condition-based-waiting.md`](condition-based-waiting.md)** — Replace arbitrary timeouts with condition polling
 
 **Related skills:**
-- **`bof:test-driven-development`** — For creating the failing test case (Phase 4, Step 1)
-- **`bof:verification-before-completion`** — Verify fix worked before claiming success
+- **[`bof:test-driven-development`](../test-driven-development/SKILL.md)** — For creating the failing test case (Phase 4, Step 1)
+- **[`bof:verification-before-completion`](../verification-before-completion/SKILL.md)** — Verify fix worked before claiming success
 
 ---
 

@@ -215,7 +215,7 @@ $ go test -v -run TestValidateEmail_RejectsEmpty ./...
 
 ## Testing Anti-Patterns
 
-See `testing-anti-patterns.md` in this skill directory for common pitfalls:
+See [`testing-anti-patterns.md`](testing-anti-patterns.md) in this skill directory for common pitfalls:
 - Testing mock behavior instead of real behavior
 - Adding test-only methods to production classes
 - Mocking without understanding dependencies

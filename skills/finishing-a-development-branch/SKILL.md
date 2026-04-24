@@ -208,8 +208,8 @@ git worktree remove <worktree-path>
 ## Integration
 
 **Called by:**
-- `bof:subagent-driven-development` — After all tasks complete
-- `bof:executing-plans` — After all batches complete
+- [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md) — After all tasks complete
+- [`bof:executing-plans`](../executing-plans/SKILL.md) — After all batches complete
 
 **Pairs with:**
-- `bof:using-git-worktrees` — Cleans up the worktree created by that skill
+- [`bof:using-git-worktrees`](../using-git-worktrees/SKILL.md) — Cleans up the worktree created by that skill
