@@ -159,6 +159,26 @@ None yet.
 
 ---
 
+## P9 — Agent Behavior Hardening
+
+**Target:** Enforce minimal-editing discipline in ImplementerAgent and implement-task skill to prevent agents from over-editing when making fixes.
+
+| Task | Status | Summary |
+|------|--------|---------|
+| [P9-001-minimal-editing-implementer](../tasks/P9-001-minimal-editing-implementer.md) | ✅ Done | Diff-review bullet + expanded TDD Cycle step 6 in ImplementerAgent and embedded copy |
+| [P9-002-minimal-editing-implement-task](../tasks/P9-002-minimal-editing-implement-task.md) | ✅ Done | `minimal-editing.md` reference doc + Step 7b in implement-task skill |
+
+### P9 Gate Checklist
+- [x] `grep -c "git diff --cached" agents/ImplementerAgent.agent.md` ≥ 1
+- [x] `grep -c "git diff --cached" bof-mcp/embedded/agents/ImplementerAgent.agent.md` ≥ 1
+- [x] `diff <(grep -A6 "Review your diff" agents/ImplementerAgent.agent.md) <(grep -A6 "Review your diff" bof-mcp/embedded/agents/ImplementerAgent.agent.md)` — no output
+- [x] `test -f skills/implement-task/references/minimal-editing.md`
+- [x] `grep -c "Step 7b" skills/implement-task/SKILL.md` ≥ 1
+- [x] `grep -rn "Bash(\|Task(\|TodoWrite\|AskUserQuestion" agents/ skills/implement-task/` — 0 results
+- [x] All P9 task docs Status: Done
+
+---
+
 ## Phase Gate — Universal Criteria (all phases)
 
 ```

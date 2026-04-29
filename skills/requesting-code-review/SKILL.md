@@ -24,7 +24,7 @@ process, and preserves your own context for continued work.
 ## When to Request Review
 
 **Mandatory:**
-- After each task in `bof:subagent-driven-development`
+- After each task in [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md)
 - After completing a major feature
 - Before merge to main
 
@@ -50,7 +50,7 @@ git log --oneline "$BASE_SHA".."$HEAD_SHA"
 runSubagent("CodeQualityReviewerAgent", reviewPrompt)
 ```
 
-Fill in the template at [skills/requesting-code-review/code-reviewer.md](../requesting-code-review/code-reviewer.md).
+Fill in the template at [`code-reviewer.md`](code-reviewer.md).
 
 **Placeholders:**
 - `{WHAT_WAS_IMPLEMENTED}` — what you just built
@@ -97,4 +97,4 @@ Fill in the template at [skills/requesting-code-review/code-reviewer.md](../requ
 
 ---
 
-See review prompt template at: [skills/requesting-code-review/code-reviewer.md](../requesting-code-review/code-reviewer.md)
+See review prompt template at: [`code-reviewer.md`](code-reviewer.md)

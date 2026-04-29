@@ -56,7 +56,19 @@ Or ask: "This branch split from main — is that correct?"
 
 ---
 
-### Step 3: Present Options
+### Step 3: Suggest Code Review
+
+If this work has not yet been code-reviewed, prompt the developer before offering merge options:
+
+> "Before merging — has this implementation been code-reviewed? If not, I can run
+> [`bof:requesting-code-review`](../requesting-code-review/SKILL.md) now."
+
+Use `vscode_askQuestions` (VS Code) / ask inline (Crush) with options `["Yes, run code review first", "No, skip review and proceed"]`.
+If code review is requested: invoke [`bof:requesting-code-review`](../requesting-code-review/SKILL.md) and wait for completion before continuing.
+
+---
+
+### Step 4: Present Options
 
 Present exactly these 4 options using `vscode_askQuestions` (VS Code) / present inline as numbered list (Crush):
 
@@ -75,7 +87,7 @@ Which option?
 
 ---
 
-### Step 4: Execute Choice
+### Step 5: Execute Choice
 
 #### Option 1: Merge Locally
 
@@ -91,7 +103,7 @@ git merge <feature-branch>
 git branch -d <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
 #### Option 2: Push and Create PR
 
@@ -108,7 +120,7 @@ gh pr create \
 - [ ] <verification step>"
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
 #### Option 3: Keep As-Is
 
@@ -136,11 +148,11 @@ git checkout <base-branch>
 git branch -D <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
 ---
 
-### Step 5: Cleanup Worktree
+### Step 6: Cleanup Worktree
 
 **For Options 1, 2, 4:**
 

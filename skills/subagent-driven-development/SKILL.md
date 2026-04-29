@@ -15,7 +15,30 @@ after each: spec compliance first, then code quality.
 
 **Announce at start:** "I'm using `bof:subagent-driven-development` to execute this plan."
 
-> **Crush:** `runSubagent` is not available in Crush. Use the **bof-mcp tools** instead — `implementer_agent`, `spec_review`, `quality_review`. See the **Crush Mode** section at the bottom of this skill. The full per-task review loop is supported; only the call syntax differs.
+---
+
+## Crush Compatibility
+
+`runSubagent` is not available in Crush. Two options depending on what is available:
+
+### Option A — Crush + bof-mcp (preferred)
+
+If the `implementer_agent`, `spec_review`, and `quality_review` MCP tools are
+available (bof-mcp server is running), use this mapping throughout the Per-Task Loop:
+
+| VS Code | Crush + bof-mcp |
+|---------|----------------|
+| `runSubagent("ImplementerAgent", ...)` | `implementer_agent(task_content=<full task doc text>)` |
+| `runSubagent("SpecReviewerAgent", ...)` | `spec_review(spec_content=<task doc + git log --oneline -5 + git diff>)` |
+| `runSubagent("CodeQualityReviewerAgent", ...)` | `quality_review(code_content=<git diff of all changes since implementation started>)` |
+
+The same **implement → spec review → quality review** order is mandatory in Crush mode.
+Never skip spec review. Never update ROADMAP or NEXT_STEPS until both reviews pass.
+
+### Option B — Crush without bof-mcp (fallback)
+
+If bof-mcp tools are not available, switch to `bof:executing-plans` which runs
+implementation inline in the same session without subagents.
 
 ---
 
@@ -26,12 +49,11 @@ after each: spec compliance first, then code quality.
 - Tasks are mostly independent
 - You want review checkpoints per task
 
-**Use [`bof:executing-plans`](../executing-plans/SKILL.md) instead when:**
+**Use `bof:executing-plans` instead when:**
 - Tasks are tightly coupled and need shared context
-- You prefer inline single-session execution with no review checkpoints
-- bof-mcp is not available
+- You prefer a single-session batch execution
 
-**Prerequisites:** Run [`bof:using-git-worktrees`](../using-git-worktrees/SKILL.md) first to create an isolated feature branch.
+**Prerequisites:** Run `bof:using-git-worktrees` first to create an isolated feature branch.
 
 ---
 
@@ -46,7 +68,7 @@ cat .adversarial/state.json 2>/dev/null || echo "No state found"
 ```
 
 If no review report exists (or the plan has been modified since the last review):
-invoke [`bof:adversarial-review`](../adversarial-review/SKILL.md) and wait for PASSED or CONDITIONAL verdict before
+invoke `bof:adversarial-review` and wait for PASSED or CONDITIONAL verdict before
 proceeding. A FAILED verdict requires revising the plan.
 
 This check runs once — before the first task. Do not re-run between tasks.
@@ -129,9 +151,9 @@ If CodeQualityReviewerAgent returns **Critical** or **Important** issues:
 ```
 
 Then **update the task document directly** (the orchestrating session does this, not the subagent):
-- Set `Status: Done`
-- Add a Session Notes entry: what was implemented, any deviations from the plan, gotchas encountered
-- If a new gotcha was found: add it to `AGENTS.md` Common Mistakes now, before the next task
+- Promote `Status: In Review` → `Status: Done`
+- Update Session Notes entry: change "In Review" to "Completed", add deviations from plan, gotchas encountered
+- Add any new gotchas to `AGENTS.md` Common Mistakes now, before the next task
 
 Proceed to next task.
 
@@ -166,21 +188,15 @@ The orchestrating session performs these directly — do not delegate to a subag
 
 ### Step B: Full Implementation Review
 
-**VS Code:**
 ```
 runSubagent("CodeQualityReviewerAgent", fullImplementationReviewPrompt)
-```
-
-**Crush (bof-mcp):**
-```
-quality_review(code_content: <full diff or changed file contents>, model: <model>)
 ```
 
 Review the entire implementation across all tasks, not just the last task. If Critical or Important issues are found, fix them before proceeding.
 
 ### Step C: Finish the branch
 
-**Invoke [`bof:finishing-a-development-branch`](../finishing-a-development-branch/SKILL.md)** to merge, PR, or clean up.
+**Invoke `bof:finishing-a-development-branch`** to merge, PR, or clean up.
 
 ---
 
@@ -201,65 +217,26 @@ Review the entire implementation across all tasks, not just the last task. If Cr
 ## Prompt Templates
 
 See in this directory:
-- [`implementer-prompt.md`](implementer-prompt.md) — base context for ImplementerAgent dispatch
-- [`spec-reviewer-prompt.md`](spec-reviewer-prompt.md) — base context for SpecReviewerAgent dispatch
-- [`code-quality-reviewer-prompt.md`](code-quality-reviewer-prompt.md) — base context for CodeQualityReviewerAgent dispatch
+- `implementer-prompt.md` — base context for ImplementerAgent dispatch
+- `spec-reviewer-prompt.md` — base context for SpecReviewerAgent dispatch
+- `code-quality-reviewer-prompt.md` — base context for CodeQualityReviewerAgent dispatch
 
 **Document schemas** referenced during this skill:
-- Task document format → [`SCHEMAS.md §3`](../../SCHEMAS.md)
-- Session log / NEXT_STEPS entry format → [`SCHEMAS.md §6`](../../SCHEMAS.md)
+- Task document format → `SCHEMAS.md §3`
+- Session log / NEXT_STEPS entry format → `SCHEMAS.md §6`
 
 ## Crush Mode (bof-mcp)
 
 > **VS Code users:** Use the native `runSubagent(...)` dispatch path above.
-> This section is for Crush, where `runSubagent` is unavailable. bof-mcp provides equivalent dispatch via MCP tools.
+> This section is for Crush callers, or VS Code callers delegating to Crush for model access.
 
-### Tool mapping
+Replace each `runSubagent(...)` call with the corresponding bof-mcp tool:
 
-| VS Code | bof-mcp tool | Key params |
+| VS Code | bof-mcp tool | Notes |
 |---|---|---|
-| `runSubagent("ImplementerAgent", prompt)` | `implementer_agent` | `task_content` (full task doc text), `model` |
-| `runSubagent("SpecReviewerAgent", prompt)` | `spec_review` | `spec_content` (task doc + changed files list), `model` |
-| `runSubagent("CodeQualityReviewerAgent", prompt)` | `quality_review` | `code_content` (diff or changed file contents), `model` |
-| [`bof:adversarial-review`](../adversarial-review/SKILL.md) guard | `gate_review` / `adversarial_review` | `plan_slug` matches `.adversarial/{slug}.json` |
+| `runSubagent("ImplementerAgent", prompt)` | `implementer_agent` | Pass `model` param to select Crush model |
+| `runSubagent("SpecReviewerAgent", prompt)` | `spec_review` | Same model or a smaller/faster one |
+| `runSubagent("CodeQualityReviewerAgent", prompt)` | `quality_review` | Same model or a smaller/faster one |
 
-### Per-task loop in Crush
-
-**Step 1 — Implement:**
-```
-implementer_agent(
-  task_content: "<full task document text including Goal, Scope, Files, Acceptance Criteria>",
-  model: "<provider/model>"
-)
-```
-Wait for completion. If the tool returns a BLOCKED or NEEDS_CONTEXT status, resolve and re-call.
-
-**Step 2 — Spec review:**
-```
-spec_review(
-  spec_content: "<task document text>\n\nChanged files:\n<list from implementer output>",
-  model: "<provider/model>"
-)
-```
-If issues found, fix inline and re-call until clean.
-
-**Step 3 — Quality review:**
-```
-quality_review(
-  code_content: "<git diff or full content of changed files>",
-  model: "<provider/model>"
-)
-```
-If Critical or Important issues found, fix and re-call.
-
-**Adversarial guard (before first task):**
-```
-gate_review()                          # if adversarial_review already ran for this plan
-# or
-adversarial_review(
-  plan_slug: "<slug matching .adversarial/{slug}.json>",
-  plan_content: "<full plan text>"
-)
-```
-
-All non-dispatch steps (todo tracking, task doc updates, AGENTS.md updates, ROADMAP.md) apply unchanged.
+Use `adversarial_review` for the adversarial guard (or `gate_review` if the review already ran).
+All other steps in this skill apply unchanged.

@@ -108,6 +108,11 @@ After all agents return:
 
 Fix issues sequentially, not in parallel:
 - One `ImplementerAgent` per fix, in order of dependency
+
+> **Crush compatibility:** `ImplementerAgent` is not available in Crush.
+> Use [`bof:executing-plans`](../executing-plans/SKILL.md) for each fix
+> sequentially. Do NOT implement fixes inline in the investigation session.
+
 - After all fixes: run the full test suite
 - Verify all originally-failing tests now pass
 

@@ -70,6 +70,19 @@ Execute these steps in order before writing any code:
   deliberately written the way it was — your job is to extend or fix it precisely,
   not to improve it. Unnecessary structural changes make code review harder and
   introduce risk.
+- **Review your diff before every commit.** Run `git diff` (unstaged) and
+  `git diff --cached` (staged) before committing. For every changed hunk ask:
+  "is this change required by a specific item in the In Scope list OR is it
+  a necessary structural consequence of a required change?" Necessary
+  structural consequences are allowed: added/removed imports, gofmt-required
+  blank lines, cascading type changes in interfaces, test helper signature
+  updates. Everything else — style fixes, variable renames, dead-code removal,
+  incidental refactors — must be reverted. To revert staged hunks:
+  `git restore --staged {file}`. To revert unstaged hunks when the file
+  contains ONLY unnecessary changes: `git checkout -- {file}`. If the file
+  contains both required and unnecessary unstaged changes with nothing staged
+  yet, do NOT use `git checkout -- {file}` — manually edit the file to remove
+  only the unnecessary hunks, then stage the result with `git add -p {file}`.
 - Commit after each completed logical unit with a semantic commit message.
 - If a function cannot complete its contract, return an error. Never silently
   return zero values.
@@ -81,7 +94,9 @@ Execute these steps in order before writing any code:
 3. Write minimal implementation (GREEN)
 4. Run all tests — confirm green + no regressions
 5. Refactor (optional), keeping tests green
-6. Commit
+6. **Diff-check, then commit:** run `git diff --cached`, verify every staged
+   hunk traces to a specific In Scope item, unstage anything that doesn't
+   (`git restore --staged {file}`), then commit with a semantic message.
 
 ## 3-Attempt Bail-Out Rule
 
@@ -96,19 +111,21 @@ attempts:
 
 After all tests pass and the acceptance criteria are met:
 
+> **Do not update `ROADMAP.md` or `docs/planning/NEXT_STEPS.md`.** Those are
+> updated by the orchestrating session after spec and quality reviews pass.
+
 1. **Update task document:**
-   - Set `Status: Done`
-   - Append to `Session Notes`: `{date} — Completed. {one sentence on approach or key decision.}`
+   - Set `Status: In Review`
+   - Append to `## Session Notes`:
+     `<!-- {YYYY-MM-DD} — In Review. {one sentence on approach or key decision.} -->`
 
-2. **Update `AGENTS.md` Common Mistakes** if you encountered a workaround or surprising behavior.
+2. **Note any new gotchas** in your status report body. The orchestrating session
+   will add them to `AGENTS.md` Common Mistakes after reviews pass.
 
-3. **Update `GLOSSARY.md`** if you introduced new domain terms.
+3. **Note any new domain terms** in your status report body. The orchestrating
+   session will add them to `GLOSSARY.md` after reviews pass.
 
-4. **Update `ROADMAP.md`** — mark this task ✅ Done.
-
-5. **Update `docs/planning/NEXT_STEPS.md`** session log.
-
-6. **AST cache update:**
+4. **AST cache update:**
    - If `scripts/rebuild-ast.sh` is present at the project root:
      ```sh
      bash scripts/rebuild-ast.sh --incremental
@@ -125,7 +142,7 @@ After all tests pass and the acceptance criteria are met:
      ```
    - Skip if no `code_ast.duckdb` exists in the project root.
 
-7. **Report status.** Use exactly one of:
+5. **Report status.** Use exactly one of:
    - `DONE` — all acceptance criteria met, no issues
    - `DONE_WITH_CONCERNS` — complete but noting [specific issue for controller to decide]
    - `BLOCKED` — 3-attempt rule triggered; full details provided

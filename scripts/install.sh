@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
 # install.sh — Install bof skills and agents into ~/.copilot/
+#              Optionally also sync bof skills into ~/.config/crush/skills/ (--crush)
 # Idempotent: safe to run multiple times. Skips existing links.
 #
 # Usage:
-#   bash scripts/install.sh             # Uses default ~/.copilot location
-#   bash scripts/install.sh --dry-run   # Show what would be created
+#   bash scripts/install.sh             # VS Code Copilot Chat only
+#   bash scripts/install.sh --crush     # also sync bof skills into crush
+#   bash scripts/install.sh --dry-run   # show what would be created (both targets)
 #
 # WSL note: When targeting the Windows filesystem, Linux symlinks (ln -sf) are
 # NOT followed by Windows/VS Code — they appear as 0 KB opaque files.
 # This script detects WSL + Windows target and uses Windows-native links:
 #   - Directories → NTFS junction (mklink /J, no admin required)
 #   - Files       → NTFS hard link (mklink /H, same drive, no admin required)
+# The crush target (~/.config/crush/skills/) is on the Linux filesystem and
+# always uses regular ln -sf symlinks regardless of platform.
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRY_RUN=0
+INSTALL_CRUSH=0
 USE_WINDOWS_LINKS=0  # set to 1 when targeting Windows NTFS from WSL
 
 # Parse flags
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
+    --crush)   INSTALL_CRUSH=1 ;;
   esac
 done
 
@@ -151,6 +157,47 @@ for instr_file in "$REPO_DIR/instructions"/*.instructions.md; do
   link_file_or_dry "$instr_file" "$INSTRUCTIONS_DIR/$instr_name"
 done
 
+# ─── Crush skills (optional, --crush flag) ────────────────────────────────────
+# Links each bof skill into ~/.config/crush/skills/.
+# Non-bof skills already in that directory are left untouched.
+# Stale bof dirs (real directories, not symlinks) are replaced with symlinks.
+
+if [ "$INSTALL_CRUSH" -eq 1 ]; then
+  CRUSH_SKILLS_DIR="$HOME/.config/crush/skills"
+  echo ""
+  echo "Syncing bof skills into: $CRUSH_SKILLS_DIR"
+  mkdir -p "$CRUSH_SKILLS_DIR"
+
+  for skill_dir in "$REPO_DIR/skills"/*/; do
+    skill_name="$(basename "$skill_dir")"
+    dst="$CRUSH_SKILLS_DIR/$skill_name"
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+      if [ -L "$dst" ]; then
+        echo "DRY-RUN: already linked $dst"
+      elif [ -d "$dst" ]; then
+        echo "DRY-RUN: replace stale dir $dst → $skill_dir"
+      else
+        echo "DRY-RUN: link $dst → $skill_dir"
+      fi
+      continue
+    fi
+
+    if [ -L "$dst" ]; then
+      # Already a symlink — leave it (idempotent)
+      echo "EXISTS:  $dst"
+    elif [ -d "$dst" ]; then
+      # Stale real directory from old install — replace with symlink
+      rm -rf "$dst"
+      ln -sf "$skill_dir" "$dst"
+      echo "UPDATED: $dst → $skill_dir"
+    else
+      ln -sf "$skill_dir" "$dst"
+      echo "LINKED:  $dst → $skill_dir"
+    fi
+  done
+fi
+
 # ─── Done ────────────────────────────────────────────────────────────────────
 
 echo ""
@@ -158,5 +205,8 @@ echo "Done."
 echo ""
 echo "Verify with:"
 echo "  ls $SKILLS_DIR"
+if [ "$INSTALL_CRUSH" -eq 1 ]; then
+  echo "  ls $HOME/.config/crush/skills"
+fi
 echo "  ls $AGENTS_DIR"
 echo "  ls $INSTRUCTIONS_DIR"

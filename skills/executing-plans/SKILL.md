@@ -23,12 +23,12 @@ direct execution is preferred over subagent dispatch.
 - You need to maintain context across the whole implementation
 - The plan has fewer than ~5 tasks
 
-**Use [`bof:subagent-driven-development`](../subagent-driven-development/SKILL.md) instead when:**
+**Use `bof:subagent-driven-development` instead when:**
 - Tasks are mostly independent
 - You want review checkpoints per task (recommended for larger plans)
 - You want to leverage specific models per task type
 
-**Prerequisites:** Run [`bof:using-git-worktrees`](../using-git-worktrees/SKILL.md) first to create an isolated feature branch.
+**Prerequisites:** Run `bof:using-git-worktrees` first to create an isolated feature branch.
 
 ---
 
@@ -62,7 +62,7 @@ For each task, in order:
      change that satisfies the criterion. Do not rename, restructure, add
      validation, or refactor anything beyond what the task explicitly requires.
    - Run the project test command at intervals (from AGENTS.md)
-   - Use [`bof:test-driven-development`](../test-driven-development/SKILL.md) if tests are required
+   - Use `bof:test-driven-development` if tests are required
 
 3. **Verify completion.** For each Acceptance Criterion:
    - Confirm it is satisfied
@@ -99,4 +99,4 @@ After all tasks are complete:
    - Update `docs/planning/NEXT_STEPS.md` with session log
    - Update `docs/planning/ROADMAP.md` task statuses
 
-3. **Invoke [`bof:finishing-a-development-branch`](../finishing-a-development-branch/SKILL.md)** to merge, PR, or clean up.
+3. **Invoke `bof:finishing-a-development-branch`** to merge, PR, or clean up.

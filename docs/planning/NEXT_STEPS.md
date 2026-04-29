@@ -2,7 +2,8 @@
 
 ## Session Log
 
-### 2026-04-19 — P7-001 bof-mcp-server Complete
+<!-- 2026-04-28 — EsquissePlan — Planned P9 (Agent Behavior Hardening): P9-001 (diff-review enforcement in ImplementerAgent + embedded copy) and P9-002 (minimal-editing.md reference doc + Step 7b in implement-task skill). Tasks added to ROADMAP. Triggered by nrehiew.github.io/blog/minimal_editing/ — agents over-edit surrounding code when making targeted fixes. -->
+<!-- 2026-04-28 — P9-001 + P9-002 — Implemented minimal-editing enforcement: diff-review bullet + TDD step 6 expansion in both ImplementerAgent copies (synced); minimal-editing.md reference doc created; Step 7b added to implement-task SKILL.md; diff-check note added to completion-protocol.md. All acceptance criteria passed. -->
 
 **What was done:** Created `bof/bof-mcp/` — a standalone Go MCP stdio server exposing 5 tools: `adversarial_review`, `gate_review`, `implementer_agent`, `spec_review`, `quality_review`.
 

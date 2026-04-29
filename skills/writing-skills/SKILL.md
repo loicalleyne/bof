@@ -210,7 +210,7 @@ Use `manage_todo_list` (VS Code) / `todos` (Crush) to track each item.
 - [ ] `description:` written in third person
 - [ ] No banned tool names anywhere in the skill body
 - [ ] `bof:` namespace for all cross-skill references (not `superpowers:`)
-- [ ] All cross-references use skill name only: "invoke `bof:test-driven-development`"
+- [ ] All cross-references use `bof:` namespace with a relative markdown link: `[bof:skill-name](../skill-name/SKILL.md)`
 - [ ] Run scenarios WITH skill — verify agents comply
 
 **REFACTOR Phase — Close Loopholes:**
