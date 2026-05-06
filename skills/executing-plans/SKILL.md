@@ -68,7 +68,24 @@ For each task, in order:
    - Confirm it is satisfied
    - If test-based: run the specific test and confirm green
 
-4. **Mark complete:**
+4. **Review (Crush + bof-mcp only — sequential, never parallel):**
+
+   If bof `spec_review` and `quality_review` MCP tools are available:
+
+   **Step 4a — Spec review:** call `spec_review` with
+   `spec_content=<task doc text> + <git log --oneline -5> + <git diff HEAD>`.
+   Wait for result. If issues found: fix them, then call `spec_review` again.
+   Repeat until compliant. **Do not proceed to 4b until 4a is compliant.**
+
+   **Step 4b — Quality review:** call `quality_review` with
+   `code_content=<git diff of all changes for this task>`.
+   Wait for result. If critical/important issues: fix them, then call
+   `quality_review` again. Repeat until approved.
+   **Do not mark complete until 4b is approved.**
+
+   If bof-mcp tools are not available: skip this step.
+
+5. **Mark complete:**
    ```
    manage_todo_list / todos({taskId: "...", status: "completed"})
    ```

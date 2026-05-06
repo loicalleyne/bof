@@ -23,22 +23,34 @@ after each: spec compliance first, then code quality.
 
 ### Option A — Crush + bof-mcp (preferred)
 
-If the `implementer_agent`, `spec_review`, and `quality_review` MCP tools are
-available (bof-mcp server is running), use this mapping throughout the Per-Task Loop:
+If `implementer_agent`, `spec_review`, and `quality_review` MCP tools are available
+(bof-mcp server is running), use the following **strictly sequential** steps in
+place of each `runSubagent(...)` call. **These are blocking calls — call one,
+wait for its result, then call the next. Never call two of these in the same
+tool-use turn.**
 
-| VS Code | Crush + bof-mcp |
-|---------|----------------|
-| `runSubagent("ImplementerAgent", ...)` | `implementer_agent(task_content=<full task doc text>)` |
-| `runSubagent("SpecReviewerAgent", ...)` | `spec_review(spec_content=<task doc + git log --oneline -5 + git diff>)` |
-| `runSubagent("CodeQualityReviewerAgent", ...)` | `quality_review(code_content=<git diff of all changes since implementation started>)` |
+For each task:
 
-The same **implement → spec review → quality review** order is mandatory in Crush mode.
-Never skip spec review. Never update ROADMAP or NEXT_STEPS until both reviews pass.
+1. **Call `implementer_agent`** with `task_content=<full task document text>`.
+   Wait for result. Check status (DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT).
+
+2. **Only after step 1 returns DONE or DONE_WITH_CONCERNS:** call `spec_review`
+   with `spec_content=<task doc text> + <git log --oneline -5> + <git diff HEAD>`.
+   Wait for result. If issues found: call `implementer_agent` again with the
+   specific issues, then call `spec_review` again. Repeat until compliant.
+
+3. **Only after step 2 returns compliant:** call `quality_review` with
+   `code_content=<git diff of all changes since implementation started>`.
+   Wait for result. If critical/important issues: call `implementer_agent` again,
+   then call `quality_review` again. Repeat until approved.
+
+4. **Only after step 3 returns approved:** update task doc Status → Done,
+   update ROADMAP, update NEXT_STEPS.
 
 ### Option B — Crush without bof-mcp (fallback)
 
-If bof-mcp tools are not available, switch to `bof:executing-plans` which runs
-implementation inline in the same session without subagents.
+If bof-mcp tools are not available, use `bof:executing-plans` which runs
+implementation inline and includes inline review steps.
 
 ---
 
@@ -207,10 +219,12 @@ Review the entire implementation across all tasks, not just the last task. If Cr
 - Dispatch implementation subagent on main/master branch without explicit user consent
 - Skip spec compliance review
 - Proceed to code quality review before spec compliance is ✅
+- Call `spec_review` and `quality_review` in the same turn — they are sequential and dependent
 - Dispatch multiple ImplementerAgents in parallel (creates conflicts)
 - Skip review loops when issues are found
 - Accept "close enough" on spec compliance
 - Accept DONE_WITH_CONCERNS without reading the concerns
+- Update ROADMAP or NEXT_STEPS before both spec and quality reviews pass
 
 ---
 
@@ -225,18 +239,4 @@ See in this directory:
 - Task document format → `SCHEMAS.md §3`
 - Session log / NEXT_STEPS entry format → `SCHEMAS.md §6`
 
-## Crush Mode (bof-mcp)
 
-> **VS Code users:** Use the native `runSubagent(...)` dispatch path above.
-> This section is for Crush callers, or VS Code callers delegating to Crush for model access.
-
-Replace each `runSubagent(...)` call with the corresponding bof-mcp tool:
-
-| VS Code | bof-mcp tool | Notes |
-|---|---|---|
-| `runSubagent("ImplementerAgent", prompt)` | `implementer_agent` | Pass `model` param to select Crush model |
-| `runSubagent("SpecReviewerAgent", prompt)` | `spec_review` | Same model or a smaller/faster one |
-| `runSubagent("CodeQualityReviewerAgent", prompt)` | `quality_review` | Same model or a smaller/faster one |
-
-Use `adversarial_review` for the adversarial guard (or `gate_review` if the review already ran).
-All other steps in this skill apply unchanged.

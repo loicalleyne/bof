@@ -15,21 +15,75 @@ import (
 )
 
 const (
-	defaultRounds = 5
+	defaultRounds = 1
 	maxRounds     = 50
 )
 
 // defaultModels is the default 5-slot model pool.
 var defaultModels = []string{
 	"copilot/claude-sonnet-4.6",
+	"gemini/gemini-3.1-pro-preview",
 	"copilot/gpt-4.1",
-	"copilot/claude-opus-4",
+	"vertexai/gemini-3.1-pro-preview",
 	"copilot/gpt-4o",
-	"gemini/gemini-2.5-pro-preview-05-06",
 }
 
-// validModelRe matches valid model IDs: alphanumeric, hyphen, underscore, dot, slash.
+// validModelRe matches valid exclude_model values: alphanumeric, hyphen, underscore, dot, slash.
+// Slash is explicitly allowed because valid model IDs are "provider/model".
 var validModelRe = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
+
+// excludeModelFilter returns a copy of pool with all entries that exactly match
+// exclude (case-insensitive) removed.
+// If exclude is empty or whitespace-only: no-op (returns pool unchanged).
+// If exclude is malformed (fails validModelRe): logs warning, returns pool unchanged.
+// If no pool entry matches: logs info, returns pool unchanged.
+// If all entries match (would empty pool): logs warning "would empty pool; ignoring exclusion",
+// returns pool unchanged (fail-open — blocking review is worse than reduced independence).
+// All non-empty exclude values are logged with %q to prevent log injection.
+func excludeModelFilter(pool []string, exclude string) []string {
+	exclude = strings.TrimSpace(exclude)
+	if exclude == "" {
+		return pool
+	}
+	log.Printf("bof-mcp: exclude_model=%q requested", exclude)
+	if !validModelRe.MatchString(exclude) {
+		log.Printf("bof-mcp: exclude_model=%q is malformed, ignoring", exclude)
+		return pool
+	}
+	excludeLower := strings.ToLower(exclude)
+	filtered := make([]string, 0, len(pool))
+	for _, m := range pool {
+		if strings.ToLower(m) != excludeLower {
+			filtered = append(filtered, m)
+		}
+	}
+	if len(filtered) == 0 {
+		log.Printf("bof-mcp: exclude_model=%q would empty pool; ignoring exclusion", exclude)
+		return pool
+	}
+	if len(filtered) == len(pool) {
+		log.Printf("bof-mcp: exclude_model=%q matched no pool entries (no-op)", exclude)
+	}
+	return filtered
+}
+
+// errAllModelsUnavailable is returned when every model in the pool is blocked.
+var errAllModelsUnavailable = errors.New("all models in the pool are unavailable " +
+	"(enterprise policy may be blocking them); " +
+	"set BOF_MODELS to a list of models known to be accessible")
+
+// modelUnavailablePatterns are case-insensitive substrings that indicate a model
+// is blocked by enterprise policy rather than a transient error.
+var modelUnavailablePatterns = []string{
+	"model is not supported",
+	"model not supported",
+	"not available for your organization",
+	"not enabled for your organization",
+	"access to this model",
+	"model access denied",
+	"this model is not available",
+	"not supported via",
+}
 
 // runCrushFn is the function used to invoke crush — replaceable in tests.
 var runCrushFn = RunCrush
@@ -43,7 +97,8 @@ func SetRandSource(src rand.Source) {
 	randSource = src
 }
 
-// newRand returns a *rand.Rand seeded from randSource if set, otherwise from time.Now().UnixNano().
+// newRand returns a *rand.Rand seeded from randSource if set, otherwise from
+// time.Now().UnixNano().
 func newRand() *rand.Rand {
 	if randSource != nil {
 		return rand.New(randSource)
@@ -94,54 +149,6 @@ func buildModelPool() []string {
 	return pool
 }
 
-// excludeModelFilter returns a copy of pool with all entries that exactly match
-// exclude (case-insensitive) removed.
-// If exclude is empty: no-op. If exclusion would empty the pool: fail-open (returns pool unchanged).
-func excludeModelFilter(pool []string, exclude string) []string {
-	exclude = strings.TrimSpace(exclude)
-	if exclude == "" {
-		return pool
-	}
-	log.Printf("bof-mcp: exclude_model=%q requested", exclude)
-	if !validModelRe.MatchString(exclude) {
-		log.Printf("bof-mcp: exclude_model=%q is malformed, ignoring", exclude)
-		return pool
-	}
-	excludeLower := strings.ToLower(exclude)
-	filtered := make([]string, 0, len(pool))
-	for _, m := range pool {
-		if strings.ToLower(m) != excludeLower {
-			filtered = append(filtered, m)
-		}
-	}
-	if len(filtered) == 0 {
-		log.Printf("bof-mcp: exclude_model=%q would empty pool; ignoring exclusion", exclude)
-		return pool
-	}
-	if len(filtered) == len(pool) {
-		log.Printf("bof-mcp: exclude_model=%q matched no pool entries (no-op)", exclude)
-	}
-	return filtered
-}
-
-// errAllModelsUnavailable is returned when every model in the pool is blocked.
-var errAllModelsUnavailable = errors.New("all models in the pool are unavailable " +
-	"(enterprise policy may be blocking them); " +
-	"set BOF_MODELS to a list of models known to be accessible")
-
-// modelUnavailablePatterns are case-insensitive substrings that indicate a model
-// is blocked by enterprise policy rather than a transient error.
-var modelUnavailablePatterns = []string{
-	"model is not supported",
-	"model not supported",
-	"not available for your organization",
-	"not enabled for your organization",
-	"access to this model",
-	"model access denied",
-	"this model is not available",
-	"not supported via",
-}
-
 // providerOf extracts the provider prefix (before the first "/") from a model string.
 func providerOf(model string) string {
 	if idx := strings.Index(model, "/"); idx >= 0 {
@@ -154,6 +161,7 @@ func providerOf(model string) string {
 // same provider are spread out as evenly as possible.
 // Uses rng for intra-group shuffling; O(n²), acceptable for n≤10.
 func familyInterleaveShuffle(pool []string, rng *rand.Rand) []string {
+	// Group by provider.
 	order := make([]string, 0, len(pool))
 	groups := make(map[string][]string)
 	providers := make([]string, 0)
@@ -164,11 +172,13 @@ func familyInterleaveShuffle(pool []string, rng *rand.Rand) []string {
 		}
 		groups[p] = append(groups[p], m)
 	}
+	// Shuffle within each group.
 	for _, p := range providers {
 		g := groups[p]
 		rng.Shuffle(len(g), func(i, j int) { g[i], g[j] = g[j], g[i] })
 		groups[p] = g
 	}
+	// Greedy pick: most-remaining group, not same as last; tie-break alphabetically.
 	sort.Strings(providers)
 	remaining := make(map[string][]string, len(groups))
 	for k, v := range groups {
@@ -187,6 +197,7 @@ func familyInterleaveShuffle(pool []string, rng *rand.Rand) []string {
 				best = p
 			}
 		}
+		// If every non-last provider is empty, fall back to last.
 		if best == "" || bestCount == 0 {
 			best = last
 		}
@@ -208,8 +219,10 @@ func buildRotationOrder(pool []string, rounds int) []string {
 	result := make([]string, 0, rounds)
 	for len(result) < rounds {
 		batch := familyInterleaveShuffle(pool, rng)
+		// Cyclic fill if pool < batchSize.
 		for len(batch) < batchSize {
 			extra := familyInterleaveShuffle(pool, rng)
+			// Swap at wrap boundary to avoid consecutive identical.
 			if len(batch) > 0 && len(extra) > 0 && batch[len(batch)-1] == extra[0] {
 				if len(extra) > 1 {
 					extra[0], extra[1] = extra[1], extra[0]
@@ -217,6 +230,7 @@ func buildRotationOrder(pool []string, rounds int) []string {
 			}
 			batch = append(batch, extra...)
 		}
+		// Batch-boundary swap: result[-1] == batch[0].
 		if len(result) > 0 && batch[0] == result[len(result)-1] {
 			if len(batch) > 1 {
 				batch[0], batch[1] = batch[1], batch[0]
@@ -253,7 +267,7 @@ func worstVerdict(verdicts []string) string {
 }
 
 // isModelUnavailable reports whether the crush output indicates the model is
-// blocked by enterprise policy rather than a transient error.
+// blocked by enterprise policy.
 func isModelUnavailable(output string) bool {
 	lower := strings.ToLower(output)
 	for _, pattern := range modelUnavailablePatterns {
@@ -266,14 +280,31 @@ func isModelUnavailable(output string) bool {
 
 // runOneRound runs the adversarial review prompt against targetModel, falling
 // back to other pool models if the primary is unavailable.
-// bof-mcp uses stdin-based prompt passing (strings passed directly, no temp files).
-func runOneRound(ctx context.Context, pool []string, targetModel, preamble, planContent string) (usedModel, output string, err error) {
-	prompt := preamble + "\n--- PLAN CONTENT ---\n" + planContent
+func runOneRound(ctx context.Context, pool []string, targetModel, preamble, planContent, tmpDir string) (usedModel, output string, err error) {
+	tmp, err := os.CreateTemp(tmpDir, "round-*.txt")
+	if err != nil {
+		return "", "", fmt.Errorf("create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return "", "", fmt.Errorf("chmod temp file: %w", err)
+	}
+	if _, err := fmt.Fprint(tmp, preamble+"\n--- PLAN CONTENT ---\n"+planContent); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return "", "", fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return "", "", fmt.Errorf("close temp file: %w", err)
+	}
 
 	tryModel := func(model string) (string, bool, error) {
-		res, runErr := runCrushFn(ctx, model, prompt)
-		if runErr != nil {
-			return "", false, runErr
+		res, err := runCrushFn(ctx, model, tmpName)
+		if err != nil {
+			return "", false, err
 		}
 		if res.ExitCode == 0 {
 			return res.Output, false, nil
@@ -284,11 +315,14 @@ func runOneRound(ctx context.Context, pool []string, targetModel, preamble, plan
 		return res.Output, false, fmt.Errorf("crush exited %d: %s", res.ExitCode, res.Output)
 	}
 
+	// Try primary model.
 	out, unavailable, runErr := tryModel(targetModel)
 	if runErr != nil {
+		_ = os.Remove(tmpName)
 		return "", out, runErr
 	}
 	if !unavailable {
+		_ = os.Remove(tmpName)
 		return targetModel, out, nil
 	}
 
@@ -299,12 +333,15 @@ func runOneRound(ctx context.Context, pool []string, targetModel, preamble, plan
 		}
 		out, unavailable, runErr = tryModel(m)
 		if runErr != nil {
+			_ = os.Remove(tmpName)
 			return "", out, runErr
 		}
 		if !unavailable {
+			_ = os.Remove(tmpName)
 			return m, out, nil
 		}
 	}
 
+	_ = os.Remove(tmpName)
 	return "", "", errAllModelsUnavailable
 }

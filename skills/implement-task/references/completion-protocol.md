@@ -9,13 +9,10 @@ the session.
 
 ## 1. Task Document
 
-- Before updating Status: run `git diff HEAD` on the task's files and verify no
-  over-editing is present. Revert any hunk not traceable to an In Scope item.
-  See `references/minimal-editing.md`.
 - Set `Status: Done`.
 - Append to `## Session Notes`:
   ```
-  <!-- {YYYY-MM-DD} — Completed. {one sentence on approach or key decision.} -->
+  {YYYY-MM-DD} — Completed. {one sentence on approach or key decision.}
   ```
 - If any "Out of Scope" item was nearly touched: note it with a reference to
   the task that should own it.
@@ -61,7 +58,9 @@ the session reasoning, that reasoning belongs in an ADR.
 
 Append to `## Session Log`:
 ```
-<!-- {YYYY-MM-DD} — {task-id} — {one sentence summary of what was done}. Files changed: {comma-separated list}. Up next: {next task id and slug, or "phase gate for P{n}" if this is the last task} -->
+{YYYY-MM-DD} — {task-id} — {one sentence summary of what was done}
+Files changed: {comma-separated list}
+Up next: {next task id and slug, or "phase gate for P{n}" if this is the last task}
 ```
 
 **This step is mandatory. Never skip it.**

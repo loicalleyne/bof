@@ -1,12 +1,10 @@
-// Package main — adversarial_review and gate_review tool implementations.
+// Package main — adversarial_review tool implementation.
 package main
 
 import (
 	"context"
-	"embed"
-	"encoding/json"
+	_ "embed"
 	"fmt"
-	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,13 +15,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-//go:embed embedded/references/*.md
-var reviewReferencesFS embed.FS
+//go:embed embedded/references/task-review-protocol.md
+var attackProtocol string
 
-// verdictRe parses the Verdict line from review output.
 var verdictRe = regexp.MustCompile(`(?m)^Verdict:\s*(PASSED|CONDITIONAL|FAILED)`)
 
-// mcpErr returns an MCP error result without propagating a Go error.
 func mcpErr(format string, args ...any) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{
 		IsError: true,
@@ -33,7 +29,7 @@ func mcpErr(format string, args ...any) (*mcp.CallToolResult, any, error) {
 	}, nil, nil
 }
 
-// extractVerdict returns the verdict string from output.
+// extractVerdict returns the verdict string from output using verdictRe.
 func extractVerdict(output string) string {
 	m := verdictRe.FindStringSubmatch(output)
 	if len(m) >= 2 {
@@ -42,43 +38,20 @@ func extractVerdict(output string) string {
 	return ""
 }
 
-// loadReferenceContent reads all embedded reference .md files and
-// concatenates them with headers for use in the review preamble.
-func loadReferenceContent() string {
-	var sb strings.Builder
-	_ = fs.WalkDir(reviewReferencesFS, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		data, readErr := reviewReferencesFS.ReadFile(path)
-		if readErr != nil {
-			return nil
-		}
-		sb.WriteString("\n--- ")
-		sb.WriteString(filepath.Base(path))
-		sb.WriteString(" ---\n")
-		sb.Write(data)
-		sb.WriteString("\n")
-		return nil
-	})
-	return sb.String()
-}
-
 // adversarialInput is the input schema for the adversarial_review tool.
 type adversarialInput struct {
 	PlanSlug     string `json:"plan_slug"               jsonschema:"Plan slug used as state file name"`
-	PlanContent  string `json:"plan_content"            jsonschema:"Full text of the plan to review"`
-	Rounds       int    `json:"rounds,omitempty"        jsonschema:"Number of review rounds (default 5, max 50)"`
-	ExcludeModel string `json:"exclude_model,omitempty" jsonschema:"Full model ID to exclude from review pool (e.g. copilot/gpt-4.1). Empty or omitted = no exclusion."`
+	PlanFiles    string `json:"plan_files"              jsonschema:"Newline-separated list of workspace-relative paths to task files (e.g. docs/tasks/P1-001-foo.md). The server reads files from project_root — do NOT inline file contents."`
+	Rounds       int    `json:"rounds,omitempty"        jsonschema:"Number of review rounds (default 1, max 50)"`
+	ExcludeModel string `json:"exclude_model,omitempty" jsonschema:"Full model ID to exclude from review pool (e.g. copilot/claude-sonnet-4.6). Obtain from crush_info tool. Empty or omitted = no exclusion."`
+	ProjectRoot  string `json:"project_root,omitempty"  jsonschema:"Absolute path to the project root. Overrides the --project-root flag set at server startup. Required when the server is shared across multiple projects."`
 }
 
-// newAdversarialHandler returns the adversarial_review MCP tool handler.
 func newAdversarialHandler(projectRoot string) func(context.Context, *mcp.CallToolRequest, adversarialInput) (*mcp.CallToolResult, any, error) {
-	references := loadReferenceContent()
 	pool := buildModelPool()
 	return func(ctx context.Context, req *mcp.CallToolRequest, input adversarialInput) (*mcp.CallToolResult, any, error) {
-		if strings.TrimSpace(input.PlanContent) == "" {
-			return mcpErr("plan_content must not be empty")
+		if strings.TrimSpace(input.PlanFiles) == "" {
+			return mcpErr("plan_files must not be empty: pass newline-separated workspace-relative paths to task files")
 		}
 		if strings.TrimSpace(input.PlanSlug) == "" {
 			return mcpErr("plan_slug must not be empty")
@@ -86,9 +59,35 @@ func newAdversarialHandler(projectRoot string) func(context.Context, *mcp.CallTo
 		if len(pool) == 0 {
 			return mcpErr("BOF_MODELS produced an empty model pool; set BOF_MODELS to a comma-separated list of provider/model entries")
 		}
+		effectiveRoot := projectRoot
+		if strings.TrimSpace(input.ProjectRoot) != "" {
+			effectiveRoot = strings.TrimSpace(input.ProjectRoot)
+		} else if effectiveRoot == "" {
+			return mcpErr("project_root is required: pass the absolute path to the project being reviewed")
+		}
+
+		// Read plan files from disk. Never accept inlined content from the caller.
+		var planContent strings.Builder
+		for _, rel := range strings.Split(strings.TrimSpace(input.PlanFiles), "\n") {
+			rel = strings.TrimSpace(rel)
+			if rel == "" {
+				continue
+			}
+			abs := filepath.Join(effectiveRoot, rel)
+			data, ferr := os.ReadFile(abs)
+			if ferr != nil {
+				return mcpErr("failed to read plan file %q: %v", rel, ferr)
+			}
+			planContent.WriteString("--- " + rel + " ---\n")
+			planContent.Write(data)
+			planContent.WriteString("\n\n")
+		}
+		if planContent.Len() == 0 {
+			return mcpErr("plan_files contained no readable files")
+		}
 		effectivePool := excludeModelFilter(pool, input.ExcludeModel)
 
-		state, err := ReadState(projectRoot, input.PlanSlug)
+		state, err := ReadState(effectiveRoot, input.PlanSlug)
 		if err != nil {
 			return mcpErr("failed to read state: %v", err)
 		}
@@ -96,44 +95,96 @@ func newAdversarialHandler(projectRoot string) func(context.Context, *mcp.CallTo
 		rounds := effectiveRounds(input.Rounds)
 		rotOrder := buildRotationOrder(effectivePool, rounds)
 
+		// PlanSlug validated via ReadState (calls validateSlug) earlier in handler — safe as dir component.
+		// MkdirAll here is intentional: fail-fast before expensive LLM calls. writeReportFile
+		// also calls MkdirAll for self-contained test coverage — the double call is idempotent.
+		reportsDir := filepath.Join(effectiveRoot, ".adversarial", input.PlanSlug)
+		if err := os.MkdirAll(reportsDir, 0o700); err != nil {
+			return mcpErr("failed to create reports directory %q: %v", reportsDir, err)
+		}
+
 		rctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
+
+		tmpDir, err := os.MkdirTemp("", "esquisse-review-*")
+		if err != nil {
+			return mcpErr("failed to create tmpDir: %v", err)
+		}
+		defer func() {
+			if rerr := os.RemoveAll(tmpDir); rerr != nil {
+				log.Printf("bof-mcp: failed to remove review tmpDir %q: %v", tmpDir, rerr)
+			}
+		}()
 
 		date := time.Now().UTC().Format("2006-01-02")
 		var roundOutputs, usedModels, verdicts []string
 
 		for roundIdx := 0; roundIdx < rounds; roundIdx++ {
 			roundNum := roundIdx + 1
+			iteration := state.Iteration + roundIdx
 			preamble := fmt.Sprintf(
-				"You are adversarial reviewer for round %d of %d (iteration %d) for the bof adversarial review workflow.\n"+
-					"Apply the 7-attack protocol described in the references below.\n"+
-					"Project root: %s\n"+
-					"Write your review report to %s/.adversarial/reports/review-%s-iter%d-r%d-%s.md\n"+
-					"Do NOT write the state file — the handler writes it after all rounds complete.\n"+
-					"The final line of your report MUST be: Verdict: PASSED|CONDITIONAL|FAILED\n\n"+
-					"=== REVIEW REFERENCES ===\n%s\n",
-				roundNum, rounds, state.Iteration+roundIdx,
-				projectRoot,
-				projectRoot, date, state.Iteration+roundIdx, roundNum, input.PlanSlug,
-				references,
+				"You are an adversarial reviewer running via bof-mcp, round %d of %d.\n\n"+
+					"=== REVIEW PROTOCOL ===\n"+
+					"%s\n"+
+					"=== END REVIEW PROTOCOL ===\n\n"+
+					"Apply every attack above to the plan that follows.\n\n"+
+					"Produce ONLY the report body — the file header (plan, reviewer, iteration, date) is\n"+
+					"added automatically by bof-mcp. Do NOT write any files. Do NOT write the state file.\n"+
+					"NEVER run rm, Remove-Item, or any destructive command targeting .adversarial/ or its subdirectories.\n"+
+					"NEVER delete, overwrite, or move any existing report file under .adversarial/.\n"+
+					"Report files are the permanent audit trail — only bof-mcp creates them.\n\n"+
+				"Before assigning your verdict, complete this exhaustiveness checklist — every item must be satisfied:\n"+
+				"1. Every attack was applied. You did not skip any attack because it seemed unlikely.\n"+
+				"2. Every task in the plan was reviewed individually, not just the plan as a whole.\n"+
+				"3. Every bullet-point sub-question in the protocol was asked of the plan for each attack.\n"+
+				"4. Every CONDITIONAL finding has a Required Changes row with a concrete Fix Type and Action.\n"+
+				"5. Every FAILED finding has a Required Changes row with a concrete Fix Type and Action.\n"+
+				"6. No issue was downgraded to save the plan. Severity follows the issue definition table only.\n"+
+				"If you cannot satisfy all 6 items, the verdict MUST be FAILED.\n\n"+
+				"Format your Required Changes section as a markdown table:\n\n"+
+					"| Priority | Attack | Issue | Fix Type | Concrete Action |\n"+
+					"|---|---|---|---|---|\n\n"+
+					"Priority: BLOCKING or ADVISORY\n"+
+					"Fix Type (use exactly one): PLANNING_ARTIFACT | DEPENDENCY | TEST_NAME | SPEC_EDIT | TASK_SPLIT | SCOPE_REMOVE\n"+
+					"Concrete Action: a specific runnable command or edit, not a description of intent.\n\n"+"Your output MUST follow this exact structure:\n\n"+
+					"## Attack Results\n\n"+
+					"| # | Attack Vector | Result | Notes |\n"+
+					"|---|---|---|---|\n"+
+					"| 1 | False assumptions | PASSED\\|CONDITIONAL\\|FAILED | … |\n"+
+					"| 2 | Edge cases | PASSED\\|CONDITIONAL\\|FAILED | … |\n"+
+					"| 3 | Security | PASSED\\|CONDITIONAL\\|FAILED | … |\n"+
+					"| 4 | Logic contradictions | PASSED\\|CONDITIONAL\\|FAILED | … |\n"+
+					"| 5 | Context blindness | PASSED\\|CONDITIONAL\\|FAILED | … |\n"+
+					"| 6 | Failure modes | PASSED\\|CONDITIONAL\\|FAILED | … |\n"+
+					"| 7 | Hallucination | PASSED\\|CONDITIONAL\\|FAILED | … |\n\n"+
+					"---\n\n"+
+					"## Critical Issues (must fix before implementation)\n\n"+
+					"{one subsection per FAILED attack vector, or \"None.\"}\n\n"+
+					"---\n\n"+
+					"## Major Issues (should fix before proceeding)\n\n"+
+					"{one subsection per CONDITIONAL attack vector, or \"None.\"}\n\n"+
+					"---\n\n"+
+					"## Minor Issues (track but not blocking)\n\n"+
+					"{any lower-severity observations, or \"None.\"}\n\n"+
+					"---\n\n"+
+					"Verdict: PASSED|CONDITIONAL|FAILED\n",
+				roundNum, rounds, attackProtocol,
 			)
 
-			usedModel, output, runErr := runOneRound(rctx, effectivePool, rotOrder[roundIdx], preamble, input.PlanContent)
-			if runErr != nil {
-				return mcpErr("round %d/%d failed: %v", roundNum, rounds, runErr)
+			usedModel, output, err := runOneRound(rctx, effectivePool, rotOrder[roundIdx], preamble, planContent.String(), tmpDir)
+			if err != nil {
+				return mcpErr("round %d/%d failed: %v", roundNum, rounds, err)
+			}
+
+			// Write the report file from Go — never instruct the model to write it,
+			// as models produce inconsistent filenames.
+			if werr := writeReportFile(reportsDir, date, input.PlanSlug, usedModel, iteration, roundNum, rounds, output); werr != nil {
+				log.Printf("bof-mcp: failed to write report file for round %d: %v", roundNum, werr)
 			}
 
 			verdict := extractVerdict(output)
 			if verdict == "" {
-				// Fallback: model may have written verdict to report file without echoing to stdout.
-				reportPath := filepath.Join(projectRoot, ".adversarial", "reports",
-					fmt.Sprintf("review-%s-iter%d-r%d-%s.md", date, state.Iteration+roundIdx, roundNum, input.PlanSlug))
-				if data, ferr := os.ReadFile(reportPath); ferr == nil {
-					verdict = extractVerdict(string(data))
-				}
-				if verdict == "" {
-					log.Printf("bof-mcp: round %d produced no valid Verdict: line in output or report file", roundNum)
-				}
+				log.Printf("bof-mcp: round %d produced no valid Verdict: line in output", roundNum)
 			}
 			roundOutputs = append(roundOutputs,
 				fmt.Sprintf("=== Round %d/%d — %s ===\n%s", roundNum, rounds, usedModel, output))
@@ -149,7 +200,7 @@ func newAdversarialHandler(projectRoot string) func(context.Context, *mcp.CallTo
 		state.LastModel = usedModels[len(usedModels)-1]
 		state.LastVerdict = worstVerdict(verdicts)
 		state.LastReviewDate = date
-		if err := WriteState(projectRoot, state); err != nil {
+		if err := WriteState(effectiveRoot, state); err != nil {
 			return mcpErr("failed to write state: %v", err)
 		}
 
@@ -162,91 +213,31 @@ func newAdversarialHandler(projectRoot string) func(context.Context, *mcp.CallTo
 	}
 }
 
-// gateInput is the input schema for the gate_review tool.
-type gateInput struct {
-	Strict bool `json:"strict" jsonschema:"If true, block when no state files exist"`
-}
-
-// gateOutput is the structured response for gate_review.
-type gateOutput struct {
-	Blocked       bool     `json:"blocked"`
-	Reason        string   `json:"reason"`
-	BlockingPlans []string `json:"blocking_plans,omitempty"`
-}
-
-// newGateHandler returns the gate_review MCP tool handler.
-func newGateHandler(projectRoot string) func(context.Context, *mcp.CallToolRequest, gateInput) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, input gateInput) (*mcp.CallToolResult, any, error) {
-		rawDir := stateDir(projectRoot)
-		dir, err := filepath.Abs(filepath.Clean(rawDir))
-		if err != nil {
-			dir = filepath.Clean(rawDir)
-		}
-		entries, err := filepath.Glob(filepath.Join(dir, "*.json"))
-		if err != nil {
-			entries = nil
-		}
-		// Filter to files directly in dir (not in subdirectories like reports/).
-		var files []string
-		for _, e := range entries {
-			if filepath.Dir(e) == dir {
-				files = append(files, e)
-			}
-		}
-
-		if len(files) == 0 {
-			if input.Strict {
-				return gateResult(gateOutput{
-					Blocked: true,
-					Reason:  "adversarial review required before completing this session",
-				})
-			}
-			return gateResult(gateOutput{
-				Blocked: false,
-				Reason:  "no reviews in progress",
-			})
-		}
-
-		var blocking []string
-		for _, f := range files {
-			data, readErr := os.ReadFile(f)
-			if readErr != nil {
-				continue
-			}
-			var s ReviewState
-			if unmErr := json.Unmarshal(data, &s); unmErr != nil {
-				continue
-			}
-			v := strings.ToUpper(strings.TrimSpace(s.LastVerdict))
-			if v != "PASSED" && v != "CONDITIONAL" {
-				slug := strings.TrimSuffix(filepath.Base(f), ".json")
-				blocking = append(blocking, slug)
-			}
-		}
-
-		if len(blocking) > 0 {
-			return gateResult(gateOutput{
-				Blocked:       true,
-				Reason:        fmt.Sprintf("%d plan(s) have FAILED or missing verdicts", len(blocking)),
-				BlockingPlans: blocking,
-			})
-		}
-		return gateResult(gateOutput{
-			Blocked: false,
-			Reason:  "all plans have PASSED or CONDITIONAL verdicts",
-		})
+// writeReportFile writes the §9 report to
+// .adversarial/{plan-slug}/iter{NN}-{YYYY-MM-DD}-{HHmm}-review.md.
+// Slug is the parent directory name; zero-padded iter ensures lex sort = chrono sort.
+// Model name belongs in the header, not the filename.
+// The header metadata (plan, reviewer, iteration, timestamp) is prepended by Go
+// so the model only needs to produce the body content.
+func writeReportFile(reportsDir, date, planSlug, usedModel string, iteration, roundNum, rounds int, body string) error {
+	if err := os.MkdirAll(reportsDir, 0o700); err != nil {
+		return err
 	}
-}
-
-func gateResult(out gateOutput) (*mcp.CallToolResult, any, error) {
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return &mcp.CallToolResult{
-			IsError: true,
-			Content: []mcp.Content{&mcp.TextContent{Text: "internal error: " + err.Error()}},
-		}, nil, nil
-	}
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
-	}, nil, nil
+	now := time.Now().UTC()
+	fname := fmt.Sprintf("iter%02d-%s-%s-review.md",
+		iteration,
+		date,
+		now.Format("1504"),
+	)
+	header := fmt.Sprintf(
+		"# Adversarial Review Report: %s\n\n"+
+			"**Plan:** %s\n"+
+			"**Reviewer:** bof-mcp (%s)\n"+
+			"**Iteration:** %d\n"+
+			"**Round:** %d of %d\n"+
+			"**Timestamp:** %s\n\n---\n\n",
+		planSlug, planSlug, usedModel, iteration, roundNum, rounds, now.Format(time.RFC3339),
+	)
+	content := []byte(header + body)
+	return os.WriteFile(filepath.Join(reportsDir, fname), content, 0o600)
 }

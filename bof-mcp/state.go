@@ -25,23 +25,19 @@ func stateDir(projectRoot string) string {
 	return filepath.Join(projectRoot, ".adversarial")
 }
 
-// validateSlug ensures planSlug contains no path separators, traversal
-// sequences, or empty value that could escape the .adversarial/ directory.
-// Allows single "." but rejects ".." anywhere in the slug.
+// validateSlug ensures planSlug contains no path separators or traversal
+// sequences that could escape the .adversarial/ directory.
 func validateSlug(planSlug string) error {
-	if planSlug == "" {
-		return fmt.Errorf("plan_slug must not be empty")
-	}
-	if strings.ContainsAny(planSlug, "/\\") {
+	clean := filepath.Clean(planSlug)
+	if clean != planSlug || strings.ContainsAny(planSlug, "/\\") {
 		return fmt.Errorf("invalid plan_slug %q: must not contain path separators", planSlug)
 	}
-	if strings.Contains(planSlug, "..") {
-		return fmt.Errorf("invalid plan_slug %q: must not contain '..'", planSlug)
-	}
-	// Secondary guard: filepath.Clean must not change the slug.
-	clean := filepath.Clean(planSlug)
-	if clean != planSlug {
-		return fmt.Errorf("invalid plan_slug %q: cleaned form %q differs (path traversal attempt)", planSlug, clean)
+	// Reject ".." explicitly: filepath.Clean("..") == ".." (no change), and ".."
+	// contains no slash, so the checks above do not catch it. With the new
+	// per-slug report directory (.adversarial/{slug}/), ".." would resolve to the
+	// project root, allowing report files to be written outside .adversarial/.
+	if planSlug == ".." || strings.Contains(planSlug, "..") {
+		return fmt.Errorf("invalid plan_slug %q: must not contain traversal sequences", planSlug)
 	}
 	return nil
 }

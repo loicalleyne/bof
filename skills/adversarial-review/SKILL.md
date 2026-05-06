@@ -123,8 +123,7 @@ Do NOT fall through to writing a self-review.
 
 #### Step 4c-i: Get caller model ID (for reviewer independence)
 
-Before calling `adversarial_review`, call the `crush_info` tool to determine
-your own model's full ID:
+**Call `crush_info` immediately before every `adversarial_review` call** — do not reuse a model ID from an earlier call in this session, as the active model may have changed.
 
 ```
 crush_info()
@@ -144,11 +143,7 @@ If the line is absent, the parse fails, or no `large =` line is found, log a vis
 and omit `exclude_model` (pass empty string, equivalent to no-op).
 If multiple `large =` lines appear, use the first one.
 
-Then pass it to `adversarial_review`:
-
-**NEVER run `rm -rf .adversarial/reports/*` or delete any file under
-`.adversarial/reports/`. Report files are the permanent audit trail. Deleting
-them is irreversible and violates the review protocol.**
+Pass the result immediately to `adversarial_review`:
 
 ```
 adversarial_review(
@@ -162,6 +157,10 @@ adversarial_review(
 Pass `plan_files` as newline-separated workspace-relative paths to the task
 documents. The server reads them from disk via `project_root`. **Do NOT inline
 or summarize file contents** — pass paths only.
+
+**NEVER run `rm -rf .adversarial/reports/*` or delete any file under
+`.adversarial/reports/`. Report files are the permanent audit trail. Deleting
+them is irreversible and violates the review protocol.**
 
 The MCP tool handles model selection, rotation state, subprocess management,
 and verdict writing. Proceed to Step 6 after it returns.
@@ -193,7 +192,28 @@ NEVER run rm, Remove-Item, or any destructive command targeting .adversarial/.
 Report files are the permanent audit trail — only create new files, never remove old ones.
 ```
 
-### Step 6: Present verdict
+## Step 6 — React to verdict
+
+**PASSED**: Signal that implementation may begin.
+
+**CONDITIONAL or FAILED**:
+
+1. Read all past reports: `list_dir(".adversarial/{slug}/")` → `read_file` each `*-review.md`.
+   Build: Resolved / Recurring / New issue table.
+2. Execute Fix Type actions (no prose patches):
+   - `PLANNING_ARTIFACT` → run `go doc`/fetch docs; create `docs/artifacts/YYYY-MM-DD-{slug}.md`
+   - `DEPENDENCY` → `go get {pkg}@{version}`; record exact version in task Specification
+   - `TEST_NAME` → add exact function name to Acceptance Criteria
+   - `SPEC_EDIT` → rewrite the named section with sourced facts
+   - `TASK_SPLIT` → create new task doc at the named boundary
+   - `SCOPE_REMOVE` → delete the named section
+3. Write planner-fixes artifact:
+   `docs/adversarial/{slug}/iter{NN}-{YYYY-MM-DD}-{HHmm}-planner-fixes.md` (SCHEMAS.md §11)
+4. Return to Step 1. Next slot = incremented iteration % 3.
+
+> Hand off to ImplementerAgent only when verdict is PASSED, or CONDITIONAL with all BLOCKING fixes resolved.
+
+### Step 7: Present verdict
 
 After the reviewer completes:
 1. Read `.adversarial/{plan-slug}.json` to confirm `last_verdict`.
@@ -213,8 +233,7 @@ After the reviewer completes:
 
 ## Constraints & Security
 
-- DO NOT modify plan documents or task docs during this skill. Read only.
-- The reviewer agents write to `.adversarial/` only — not to `docs/`.
+- Reviewer agents (Adversarial-r0/r1/r2) are read-only. They write to `.adversarial/` only — not to `docs/` or task documents.
 - DO NOT skip rotation: always compute `slot = iteration % 3` and dispatch
   the correct agent. Self-review (same model as PlanD) defeats the purpose.
 - DO NOT accept a FAILED verdict as "good enough to proceed." FAILED is a

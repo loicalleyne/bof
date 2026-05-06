@@ -7,7 +7,7 @@ description: >
   dispatched by bof:subagent-driven-development.
 target: vscode
 user-invocable: false
-model: ['Auto (copilot)', 'gemini/gemini-3.1-pro-preview-customtools']
+model: ['Claude Opus 4.6 (copilot)', 'Claude Sonnet 4.6 (copilot)', 'Auto (copilot)', 'gemini/gemini-3.1-pro-preview-customtools']
 tools:
   - read
   - search

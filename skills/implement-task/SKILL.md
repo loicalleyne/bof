@@ -200,22 +200,6 @@ changes.
 After every function or type implementation: run the relevant test.
 Do not batch multiple implementations and test them all at once.
 
-#### Step 7b — Diff-Check Before Commit
-
-Before committing any logical unit, review the diff:
-
-```sh
-git diff --cached
-```
-
-For every changed hunk ask: "which item in the In Scope list requires this change?"
-- If you can name it: keep it.
-- If you cannot name it: revert it (`git restore --staged {file}` or `git checkout -- {file}`).
-
-See `skills/implement-task/references/minimal-editing.md` for the full anti-pattern list.
-
-A clean commit contains only lines directly traceable to an In Scope item.
-
 #### Step 8 — Bail-Out Trigger (Hard Rule 16)
 
 If the same error or test failure persists after **3 meaningfully different**
@@ -251,7 +235,7 @@ Run the exact test commands from the task doc's Acceptance Criteria section.
 
 Set `Status: Done`. Append to `## Session Notes`:
 ```
-<!-- {YYYY-MM-DD} — Completed. {one sentence on approach or key decision.} -->
+{YYYY-MM-DD} — Completed. {one sentence on approach or key decision}
 ```
 
 #### Step 11 — Update AGENTS.md
@@ -287,7 +271,9 @@ If the phrase "we chose X over Y because" appears in reasoning during this sessi
 
 Append to `## Session Log`:
 ```
-<!-- {YYYY-MM-DD} — {task-id} — {one sentence summary}. Files changed: {comma-separated list}. Up next: {next task id and slug, or "phase gate" if last task} -->
+{YYYY-MM-DD} — {task-id} — {one sentence summary}
+Files changed: {comma-separated list}
+Up next: {next task id and slug, or "phase gate" if last task}
 ```
 
 **Never skip this step.**
